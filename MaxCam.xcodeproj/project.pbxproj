@@ -1,0 +1,518 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXFileReference section */
+		AB12C12345CD000000000001 /* MaxCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MaxCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB12C12345CD000000000251 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AB12C12345CD000000000260 /* MaxCamShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MaxCamShaders.metal; sourceTree = "<group>"; };
+		AB12C12345CD000000000219 /* DiagnosticsExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsExport.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000201 /* MaxCamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaxCamApp.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000202 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000211 /* CameraEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraEngine.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000212 /* CameraFormatInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraFormatInfo.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000213 /* DeviceCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilities.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000214 /* CapabilityMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityMatrix.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000215 /* CameraEngineError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraEngineError.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000216 /* EncoderCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncoderCapabilities.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000217 /* CapabilityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGate.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000218 /* MetalProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalProcessor.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000221 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000231 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000232 /* CapabilitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilitiesView.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000241 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		E2A2123456AC000000000002 /* CapabilityGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGateTests.swift; sourceTree = "<group>"; };
+		E2A2123456AC000000000001 /* MaxCamTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MaxCamTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXBuildFile section */
+		AB12C12345CD000000000252 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000251 /* Assets.xcassets */; };
+		AB12C12345CD000000000253 /* MaxCamShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000260 /* MaxCamShaders.metal */; };
+		AB12C12345CD000000000261 /* CameraEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000211 /* CameraEngine.swift */; };
+		AB12C12345CD000000000262 /* CapabilityMatrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000214 /* CapabilityMatrix.swift */; };
+		AB12C12345CD000000000263 /* CapabilityGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A2123456AC000000000002 /* CapabilityGateTests.swift */; };
+		AB12C12345CD000000000264 /* DiagnosticsExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000219 /* DiagnosticsExport.swift */; };
+		AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000301 /* MaxCamApp.swift */; };
+		AB12C12345CD000000000302 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000302 /* AppViewModel.swift */; };
+		AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000312 /* CameraFormatInfo.swift */; };
+		AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000313 /* DeviceCapabilities.swift */; };
+		AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000315 /* CameraEngineError.swift */; };
+		AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000316 /* EncoderCapabilities.swift */; };
+		AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000317 /* CapabilityGate.swift */; };
+		AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000318 /* MetalProcessor.swift */; };
+		AB12C12345CD000000000321 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000321 /* CameraPreview.swift */; };
+		AB12C12345CD000000000331 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000331 /* CameraView.swift */; };
+		AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000332 /* CapabilitiesView.swift */; };
+		AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000341 /* AppEnvironment.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXGroup section */
+		AB12C12345CD000000000010 = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000011 /* MaxCam */,
+				AB12C12345CD000000000012 /* MaxCamTests */,
+				AB12C12345CD000000000040 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000011 /* MaxCam */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000020 /* App */,
+				AB12C12345CD000000000021 /* Engine */,
+				AB12C12345CD000000000022 /* Preview */,
+				AB12C12345CD000000000023 /* UI */,
+				AB12C12345CD000000000024 /* Support */,
+				AB12C12345CD000000000025 /* Assets.xcassets */,
+			);
+			path = MaxCam;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000012 /* MaxCamTests */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000013 /* Engine */,
+			);
+			path = MaxCamTests;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000013 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				E2A2123456AC000000000002 /* CapabilityGateTests.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000020 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000201 /* MaxCamApp.swift */,
+				AB12C12345CD000000000202 /* AppViewModel.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000021 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000211 /* CameraEngine.swift */,
+				AB12C12345CD000000000212 /* CameraFormatInfo.swift */,
+				AB12C12345CD000000000213 /* DeviceCapabilities.swift */,
+				AB12C12345CD000000000214 /* CapabilityMatrix.swift */,
+				AB12C12345CD000000000215 /* CameraEngineError.swift */,
+				AB12C12345CD000000000216 /* EncoderCapabilities.swift */,
+				AB12C12345CD000000000217 /* CapabilityGate.swift */,
+				AB12C12345CD000000000218 /* MetalProcessor.swift */,
+				AB12C12345CD000000000260 /* MaxCamShaders.metal */,
+				AB12C12345CD000000000219 /* DiagnosticsExport.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000022 /* Preview */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000221 /* CameraPreview.swift */,
+			);
+			path = Preview;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000023 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000231 /* CameraView.swift */,
+				AB12C12345CD000000000232 /* CapabilitiesView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000024 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000241 /* AppEnvironment.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000025 /* Assets.xcassets */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000251 /* Assets.xcassets */,
+			);
+			path = Assets.xcassets;
+			sourceTree = "<group>";
+		};
+		AB12C12345CD000000000040 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AB12C12345CD000000000001 /* MaxCam.app */,
+				E2A2123456AC000000000001 /* MaxCamTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AB12C12345CD000000000002 /* MaxCam */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB12C12345CD000000000090 /* Build configuration list for PBXNativeTarget "MaxCam" */;
+			buildPhases = (
+				AB12C12345CD000000000003 /* Sources */,
+				AB12C12345CD000000000004 /* Frameworks */,
+				AB12C12345CD000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MaxCam;
+			productName = MaxCam;
+			productReference = AB12C12345CD000000000001 /* MaxCam.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E2A2123456AC000000000003 /* MaxCamTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E2A2123456AC000000000090 /* Build configuration list for PBXNativeTarget "MaxCamTests" */;
+			buildPhases = (
+				E2A2123456AC000000000010 /* Sources */,
+				E2A2123456AC000000000011 /* Frameworks */,
+				E2A2123456AC000000000012 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E2A2123456AC000000000006 /* PBXTargetDependency */,
+			);
+			name = MaxCamTests;
+			productName = MaxCamTests;
+			productReference = E2A2123456AC000000000001 /* MaxCamTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AB12C12345CD000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					AB12C12345CD000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					E2A2123456AC000000000003 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = AB12C12345CD000000000002;
+					};
+				};
+			};
+			buildConfigurationList = AB12C12345CD000000000060 /* Build configuration list for PBXProject "MaxCam" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AB12C12345CD000000000010;
+			productRefGroup = AB12C12345CD000000000040 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AB12C12345CD000000000002 /* MaxCam */,
+				E2A2123456AC000000000003 /* MaxCamTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AB12C12345CD000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB12C12345CD000000000252 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E2A2123456AC000000000012 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AB12C12345CD000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */,
+				AB12C12345CD000000000302 /* AppViewModel.swift in Sources */,
+				AB12C12345CD000000000211 /* CameraEngine.swift in Sources */,
+				AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */,
+				AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */,
+				AB12C12345CD000000000214 /* CapabilityMatrix.swift in Sources */,
+				AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */,
+				AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */,
+				AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */,
+				AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */,
+				AB12C12345CD000000000219 /* DiagnosticsExport.swift in Sources */,
+				AB12C12345CD000000000321 /* CameraPreview.swift in Sources */,
+				AB12C12345CD000000000331 /* CameraView.swift in Sources */,
+				AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */,
+				AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */,
+				AB12C12345CD000000000253 /* MaxCamShaders.metal in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E2A2123456AC000000000010 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB12C12345CD000000000263 /* CapabilityGateTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AB12C12345CD000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E2A2123456AC000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		E2A2123456AC000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AB12C12345CD000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AB12C12345CD000000000002;
+			remoteInfo = MaxCam;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		E2A2123456AC000000000006 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AB12C12345CD000000000002 /* MaxCam */;
+			targetProxy = E2A2123456AC000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AB12C12345CD000000000061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AB12C12345CD000000000062 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AB12C12345CD000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MaxCam records cinema-grade video using the camera.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MaxCam records audio alongside video.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCam;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AB12C12345CD000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MaxCam records cinema-grade video using the camera.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MaxCam records audio alongside video.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCam;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E2A2123456AC000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCamTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MaxCam.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MaxCam";
+			};
+			name = Debug;
+		};
+		E2A2123456AC000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCamTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MaxCam.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MaxCam";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AB12C12345CD000000000060 /* Build configuration list for PBXProject "MaxCam" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB12C12345CD000000000061 /* Debug */,
+				AB12C12345CD000000000062 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AB12C12345CD000000000090 /* Build configuration list for PBXNativeTarget "MaxCam" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB12C12345CD000000000091 /* Debug */,
+				AB12C12345CD000000000092 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E2A2123456AC000000000090 /* Build configuration list for PBXNativeTarget "MaxCamTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E2A2123456AC000000000091 /* Debug */,
+				E2A2123456AC000000000092 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AB12C12345CD000000000000 /* Project object */;
+}

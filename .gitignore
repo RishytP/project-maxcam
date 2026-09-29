@@ -1,0 +1,22 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xcuserdata
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+*.env

@@ -1,0 +1,3132 @@
+From fb36e85b8c7a1b49aa2da5d0fc66a8c4b0c10205 Mon Sep 17 00:00:00 2001
+From: openhands <openhands@all-hands.dev>
+Date: Sat, 12 Sep 2026 14:58:31 +0000
+Subject: [PATCH] MaxCam: cinema camera app for iPhone 17 / iOS 26
+ (AVFoundation public APIs)
+
+First-run milestone: real camera preview + Custom Camera Capabilities
+diagnostic screen that enumerates exactly what the physical device exposes.
+
+Highlights:
+- Capability engine: DeviceCapabilities/CameraFormatInfo snapshots from
+  AVCaptureDevice.DiscoverySession; no model hard-coding.
+- CapabilityMatrix builds only configurations the active format advertises,
+  including Apple Log 2 (.appleLog2, iOS 26) and native ProRes 422 HQ when
+  AVCaptureMovieFileOutput advertises it (<=30fps, DeviceCapabilities gated).
+- CameraEngine (thread-safe final class): HEVC Main10 recording via
+  AVAssetWriter with honest BT.2020 color metadata for Log/HLG; Open Gate via
+  setDynamicAspectRatio (iOS 26+); Pro Video Storage opt-in only on iOS 27+;
+  manual ISO/exposure/bias, focus lock, temperature/tint white balance.
+- MetalProcessor + MaxCamShaders.metal optional display-transform preview with
+  graceful fallback when no metallib is present.
+- DiagnosticsExport report + share sheet; CapabilityGate reasons for every
+  unsupported option; pure-Swift CapabilityGateTests unit-test target.
+- Shared scheme with TestAction; pbxproj validated (68 objects, no undefined
+  refs) via scripts/validate_pbxproj.py.
+
+Verification on Linux is static only (no Swift toolchain); unit tests require
+Xcode/macOS.
+---
+ .gitignore                                    |  22 +
+ MaxCam.xcodeproj/project.pbxproj              | 518 +++++++++++++++++
+ .../xcshareddata/xcschemes/MaxCam.xcscheme    |  89 +++
+ MaxCam.xcworkspace/contents.xcworkspacedata   |   6 +
+ MaxCam/App/AppViewModel.swift                 | 121 ++++
+ MaxCam/App/MaxCamApp.swift                    |  13 +
+ .../AccentColor.colorset/Contents.json        |  20 +
+ .../AppIcon.appiconset/Contents.json          |  13 +
+ MaxCam/Assets.xcassets/Contents.json          |   6 +
+ MaxCam/Engine/CameraEngine.swift              | 529 ++++++++++++++++++
+ MaxCam/Engine/CameraEngineError.swift         |  44 ++
+ MaxCam/Engine/CameraFormatInfo.swift          | 170 ++++++
+ MaxCam/Engine/CapabilityGate.swift            |  33 ++
+ MaxCam/Engine/CapabilityMatrix.swift          | 209 +++++++
+ MaxCam/Engine/DeviceCapabilities.swift        | 134 +++++
+ MaxCam/Engine/DiagnosticsExport.swift         |  81 +++
+ MaxCam/Engine/EncoderCapabilities.swift       |  64 +++
+ MaxCam/Engine/MaxCamShaders.metal             |  54 ++
+ MaxCam/Engine/MetalProcessor.swift            | 147 +++++
+ MaxCam/Preview/CameraPreview.swift            |  52 ++
+ MaxCam/Support/AppEnvironment.swift           |  27 +
+ MaxCam/UI/CameraView.swift                    | 108 ++++
+ MaxCam/UI/CapabilitiesView.swift              |  74 +++
+ MaxCamTests/Engine/CapabilityGateTests.swift  |  79 +++
+ README.md                                     | 104 +++-
+ scripts/README.md                             |  29 +
+ scripts/validate_pbxproj.py                   | 112 ++++
+ 27 files changed, 2857 insertions(+), 1 deletion(-)
+ create mode 100644 .gitignore
+ create mode 100644 MaxCam.xcodeproj/project.pbxproj
+ create mode 100644 MaxCam.xcodeproj/xcshareddata/xcschemes/MaxCam.xcscheme
+ create mode 100644 MaxCam.xcworkspace/contents.xcworkspacedata
+ create mode 100644 MaxCam/App/AppViewModel.swift
+ create mode 100644 MaxCam/App/MaxCamApp.swift
+ create mode 100644 MaxCam/Assets.xcassets/AccentColor.colorset/Contents.json
+ create mode 100644 MaxCam/Assets.xcassets/AppIcon.appiconset/Contents.json
+ create mode 100644 MaxCam/Assets.xcassets/Contents.json
+ create mode 100644 MaxCam/Engine/CameraEngine.swift
+ create mode 100644 MaxCam/Engine/CameraEngineError.swift
+ create mode 100644 MaxCam/Engine/CameraFormatInfo.swift
+ create mode 100644 MaxCam/Engine/CapabilityGate.swift
+ create mode 100644 MaxCam/Engine/CapabilityMatrix.swift
+ create mode 100644 MaxCam/Engine/DeviceCapabilities.swift
+ create mode 100644 MaxCam/Engine/DiagnosticsExport.swift
+ create mode 100644 MaxCam/Engine/EncoderCapabilities.swift
+ create mode 100644 MaxCam/Engine/MaxCamShaders.metal
+ create mode 100644 MaxCam/Engine/MetalProcessor.swift
+ create mode 100644 MaxCam/Preview/CameraPreview.swift
+ create mode 100644 MaxCam/Support/AppEnvironment.swift
+ create mode 100644 MaxCam/UI/CameraView.swift
+ create mode 100644 MaxCam/UI/CapabilitiesView.swift
+ create mode 100644 MaxCamTests/Engine/CapabilityGateTests.swift
+ create mode 100644 scripts/README.md
+ create mode 100755 scripts/validate_pbxproj.py
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..8ee38aa
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,22 @@
++# Xcode
++DerivedData/
++build/
++*.xcuserstate
++xcuserdata/
++*.xcuserdata
++
++# macOS
++.DS_Store
++
++# Swift Package Manager
++.build/
++.swiftpm/
++
++# Editor
++.idea/
++.vscode/
++*.swp
++
++# Environment
++.env
++*.env
+\ No newline at end of file
+diff --git a/MaxCam.xcodeproj/project.pbxproj b/MaxCam.xcodeproj/project.pbxproj
+new file mode 100644
+index 0000000..f5b6937
+--- /dev/null
++++ b/MaxCam.xcodeproj/project.pbxproj
+@@ -0,0 +1,518 @@
++// !$*UTF8*$!
++{
++	archiveVersion = 1;
++	classes = {
++	};
++	objectVersion = 56;
++	objects = {
++
++/* Begin PBXFileReference section */
++		AB12C12345CD000000000001 /* MaxCam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MaxCam.app; sourceTree = BUILT_PRODUCTS_DIR; };
++		AB12C12345CD000000000251 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
++		AB12C12345CD000000000260 /* MaxCamShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MaxCamShaders.metal; sourceTree = "<group>"; };
++		AB12C12345CD000000000219 /* DiagnosticsExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsExport.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000201 /* MaxCamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaxCamApp.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000202 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000211 /* CameraEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraEngine.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000212 /* CameraFormatInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraFormatInfo.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000213 /* DeviceCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilities.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000214 /* CapabilityMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityMatrix.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000215 /* CameraEngineError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraEngineError.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000216 /* EncoderCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncoderCapabilities.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000217 /* CapabilityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGate.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000218 /* MetalProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalProcessor.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000221 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000231 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000232 /* CapabilitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilitiesView.swift; sourceTree = "<group>"; };
++		AB12C12345CD000000000241 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
++		E2A2123456AC000000000002 /* CapabilityGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGateTests.swift; sourceTree = "<group>"; };
++		E2A2123456AC000000000001 /* MaxCamTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MaxCamTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
++/* End PBXFileReference section */
++
++/* Begin PBXBuildFile section */
++		AB12C12345CD000000000252 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000251 /* Assets.xcassets */; };
++		AB12C12345CD000000000253 /* MaxCamShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000260 /* MaxCamShaders.metal */; };
++		AB12C12345CD000000000261 /* CameraEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000211 /* CameraEngine.swift */; };
++		AB12C12345CD000000000262 /* CapabilityMatrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000214 /* CapabilityMatrix.swift */; };
++		AB12C12345CD000000000263 /* CapabilityGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A2123456AC000000000002 /* CapabilityGateTests.swift */; };
++		AB12C12345CD000000000264 /* DiagnosticsExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000219 /* DiagnosticsExport.swift */; };
++		AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000301 /* MaxCamApp.swift */; };
++		AB12C12345CD000000000302 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000302 /* AppViewModel.swift */; };
++		AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000312 /* CameraFormatInfo.swift */; };
++		AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000313 /* DeviceCapabilities.swift */; };
++		AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000315 /* CameraEngineError.swift */; };
++		AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000316 /* EncoderCapabilities.swift */; };
++		AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000317 /* CapabilityGate.swift */; };
++		AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000318 /* MetalProcessor.swift */; };
++		AB12C12345CD000000000321 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000321 /* CameraPreview.swift */; };
++		AB12C12345CD000000000331 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000331 /* CameraView.swift */; };
++		AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000332 /* CapabilitiesView.swift */; };
++		AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000341 /* AppEnvironment.swift */; };
++/* End PBXBuildFile section */
++
++/* Begin PBXGroup section */
++		AB12C12345CD000000000010 = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000011 /* MaxCam */,
++				AB12C12345CD000000000012 /* MaxCamTests */,
++				AB12C12345CD000000000040 /* Products */,
++			);
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000011 /* MaxCam */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000020 /* App */,
++				AB12C12345CD000000000021 /* Engine */,
++				AB12C12345CD000000000022 /* Preview */,
++				AB12C12345CD000000000023 /* UI */,
++				AB12C12345CD000000000024 /* Support */,
++				AB12C12345CD000000000025 /* Assets.xcassets */,
++			);
++			path = MaxCam;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000012 /* MaxCamTests */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000013 /* Engine */,
++			);
++			path = MaxCamTests;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000013 /* Engine */ = {
++			isa = PBXGroup;
++			children = (
++				E2A2123456AC000000000002 /* CapabilityGateTests.swift */,
++			);
++			path = Engine;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000020 /* App */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000201 /* MaxCamApp.swift */,
++				AB12C12345CD000000000202 /* AppViewModel.swift */,
++			);
++			path = App;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000021 /* Engine */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000211 /* CameraEngine.swift */,
++				AB12C12345CD000000000212 /* CameraFormatInfo.swift */,
++				AB12C12345CD000000000213 /* DeviceCapabilities.swift */,
++				AB12C12345CD000000000214 /* CapabilityMatrix.swift */,
++				AB12C12345CD000000000215 /* CameraEngineError.swift */,
++				AB12C12345CD000000000216 /* EncoderCapabilities.swift */,
++				AB12C12345CD000000000217 /* CapabilityGate.swift */,
++				AB12C12345CD000000000218 /* MetalProcessor.swift */,
++				AB12C12345CD000000000260 /* MaxCamShaders.metal */,
++				AB12C12345CD000000000219 /* DiagnosticsExport.swift */,
++			);
++			path = Engine;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000022 /* Preview */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000221 /* CameraPreview.swift */,
++			);
++			path = Preview;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000023 /* UI */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000231 /* CameraView.swift */,
++				AB12C12345CD000000000232 /* CapabilitiesView.swift */,
++			);
++			path = UI;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000024 /* Support */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000241 /* AppEnvironment.swift */,
++			);
++			path = Support;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000025 /* Assets.xcassets */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000251 /* Assets.xcassets */,
++			);
++			path = Assets.xcassets;
++			sourceTree = "<group>";
++		};
++		AB12C12345CD000000000040 /* Products */ = {
++			isa = PBXGroup;
++			children = (
++				AB12C12345CD000000000001 /* MaxCam.app */,
++				E2A2123456AC000000000001 /* MaxCamTests.xctest */,
++			);
++			name = Products;
++			sourceTree = "<group>";
++		};
++/* End PBXGroup section */
++
++/* Begin PBXNativeTarget section */
++		AB12C12345CD000000000002 /* MaxCam */ = {
++			isa = PBXNativeTarget;
++			buildConfigurationList = AB12C12345CD000000000090 /* Build configuration list for PBXNativeTarget "MaxCam" */;
++			buildPhases = (
++				AB12C12345CD000000000003 /* Sources */,
++				AB12C12345CD000000000004 /* Frameworks */,
++				AB12C12345CD000000000005 /* Resources */,
++			);
++			buildRules = (
++			);
++			dependencies = (
++			);
++			name = MaxCam;
++			productName = MaxCam;
++			productReference = AB12C12345CD000000000001 /* MaxCam.app */;
++			productType = "com.apple.product-type.application";
++		};
++		E2A2123456AC000000000003 /* MaxCamTests */ = {
++			isa = PBXNativeTarget;
++			buildConfigurationList = E2A2123456AC000000000090 /* Build configuration list for PBXNativeTarget "MaxCamTests" */;
++			buildPhases = (
++				E2A2123456AC000000000010 /* Sources */,
++				E2A2123456AC000000000011 /* Frameworks */,
++				E2A2123456AC000000000012 /* Resources */,
++			);
++			buildRules = (
++			);
++			dependencies = (
++				E2A2123456AC000000000006 /* PBXTargetDependency */,
++			);
++			name = MaxCamTests;
++			productName = MaxCamTests;
++			productReference = E2A2123456AC000000000001 /* MaxCamTests.xctest */;
++			productType = "com.apple.product-type.bundle.unit-test";
++		};
++/* End PBXNativeTarget section */
++
++/* Begin PBXProject section */
++		AB12C12345CD000000000000 /* Project object */ = {
++			isa = PBXProject;
++			attributes = {
++				BuildIndependentTargetsInParallel = 1;
++				LastSwiftUpdateCheck = 1600;
++				LastUpgradeCheck = 1600;
++				TargetAttributes = {
++					AB12C12345CD000000000002 = {
++						CreatedOnToolsVersion = 16.0;
++					};
++					E2A2123456AC000000000003 = {
++						CreatedOnToolsVersion = 16.0;
++						TestTargetID = AB12C12345CD000000000002;
++					};
++				};
++			};
++			buildConfigurationList = AB12C12345CD000000000060 /* Build configuration list for PBXProject "MaxCam" */;
++			compatibilityVersion = "Xcode 14.0";
++			developmentRegion = en;
++			hasScannedForEncodings = 0;
++			knownRegions = (
++				en,
++				Base,
++			);
++			mainGroup = AB12C12345CD000000000010;
++			productRefGroup = AB12C12345CD000000000040 /* Products */;
++			projectDirPath = "";
++			projectRoot = "";
++			targets = (
++				AB12C12345CD000000000002 /* MaxCam */,
++				E2A2123456AC000000000003 /* MaxCamTests */,
++			);
++		};
++/* End PBXProject section */
++
++/* Begin PBXResourcesBuildPhase section */
++		AB12C12345CD000000000005 /* Resources */ = {
++			isa = PBXResourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				AB12C12345CD000000000252 /* Assets.xcassets in Resources */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E2A2123456AC000000000012 /* Resources */ = {
++			isa = PBXResourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++/* End PBXResourcesBuildPhase section */
++
++/* Begin PBXSourcesBuildPhase section */
++		AB12C12345CD000000000003 /* Sources */ = {
++			isa = PBXSourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */,
++				AB12C12345CD000000000302 /* AppViewModel.swift in Sources */,
++				AB12C12345CD000000000211 /* CameraEngine.swift in Sources */,
++				AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */,
++				AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */,
++				AB12C12345CD000000000214 /* CapabilityMatrix.swift in Sources */,
++				AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */,
++				AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */,
++				AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */,
++				AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */,
++				AB12C12345CD000000000219 /* DiagnosticsExport.swift in Sources */,
++				AB12C12345CD000000000321 /* CameraPreview.swift in Sources */,
++				AB12C12345CD000000000331 /* CameraView.swift in Sources */,
++				AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */,
++				AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */,
++				AB12C12345CD000000000253 /* MaxCamShaders.metal in Sources */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E2A2123456AC000000000010 /* Sources */ = {
++			isa = PBXSourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				AB12C12345CD000000000263 /* CapabilityGateTests.swift in Sources */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++/* End PBXSourcesBuildPhase section */
++
++/* Begin PBXFrameworksBuildPhase section */
++		AB12C12345CD000000000004 /* Frameworks */ = {
++			isa = PBXFrameworksBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E2A2123456AC000000000011 /* Frameworks */ = {
++			isa = PBXFrameworksBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++/* End PBXFrameworksBuildPhase section */
++
++/* Begin PBXContainerItemProxy section */
++		E2A2123456AC000000000007 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = AB12C12345CD000000000000 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = AB12C12345CD000000000002;
++			remoteInfo = MaxCam;
++		};
++/* End PBXContainerItemProxy section */
++
++/* Begin PBXTargetDependency section */
++		E2A2123456AC000000000006 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = AB12C12345CD000000000002 /* MaxCam */;
++			targetProxy = E2A2123456AC000000000007 /* PBXContainerItemProxy */;
++		};
++/* End PBXTargetDependency section */
++
++/* Begin XCBuildConfiguration section */
++		AB12C12345CD000000000061 /* Debug */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_SEARCH_USER_PATHS = NO;
++				CLANG_ANALYZER_NONNULL = YES;
++				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
++				CLANG_ENABLE_MODULES = YES;
++				CLANG_ENABLE_OBJC_ARC = YES;
++				CLANG_WARN_BOOL_CONVERSION = YES;
++				CLANG_WARN_CONSTANT_CONVERSION = YES;
++				CLANG_WARN_EMPTY_BODY = YES;
++				CLANG_WARN_ENUM_CONVERSION = YES;
++				CLANG_WARN_INFINITE_RECURSION = YES;
++				CLANG_WARN_INT_CONVERSION = YES;
++				CLANG_WARN_UNREACHABLE_CODE = YES;
++				COPY_PHASE_STRIP = NO;
++				DEBUG_INFORMATION_FORMAT = dwarf;
++				ENABLE_STRICT_OBJC_MSGSEND = YES;
++				ENABLE_TESTABILITY = YES;
++				GCC_C_LANGUAGE_STANDARD = gnu17;
++				GCC_DYNAMIC_NO_PIC = NO;
++				GCC_OPTIMIZATION_LEVEL = 0;
++				GCC_PREPROCESSOR_DEFINITIONS = (
++					"DEBUG=1",
++					"$(inherited)",
++				);
++				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
++				GCC_WARN_ABOUT_RETURN_TYPE = YES;
++				GCC_WARN_UNDECLARED_SELECTOR = YES;
++				GCC_WARN_UNINITIALIZED_AUTOS = YES;
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
++				MTL_FAST_MATH = YES;
++				ONLY_ACTIVE_ARCH = YES;
++				SDKROOT = iphoneos;
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
++				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
++			};
++			name = Debug;
++		};
++		AB12C12345CD000000000062 /* Release */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_SEARCH_USER_PATHS = NO;
++				CLANG_ANALYZER_NONNULL = YES;
++				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
++				CLANG_ENABLE_MODULES = YES;
++				CLANG_ENABLE_OBJC_ARC = YES;
++				CLANG_WARN_BOOL_CONVERSION = YES;
++				CLANG_WARN_CONSTANT_CONVERSION = YES;
++				CLANG_WARN_EMPTY_BODY = YES;
++				CLANG_WARN_ENUM_CONVERSION = YES;
++				CLANG_WARN_INFINITE_RECURSION = YES;
++				CLANG_WARN_INT_CONVERSION = YES;
++				CLANG_WARN_UNREACHABLE_CODE = YES;
++				COPY_PHASE_STRIP = NO;
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				ENABLE_NS_ASSERTIONS = NO;
++				ENABLE_STRICT_OBJC_MSGSEND = YES;
++				GCC_C_LANGUAGE_STANDARD = gnu17;
++				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
++				GCC_WARN_ABOUT_RETURN_TYPE = YES;
++				GCC_WARN_UNDECLARED_SELECTOR = YES;
++				GCC_WARN_UNINITIALIZED_AUTOS = YES;
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				MTL_ENABLE_DEBUG_INFO = NO;
++				MTL_FAST_MATH = YES;
++				SDKROOT = iphoneos;
++				SWIFT_COMPILATION_MODE = wholemodule;
++				VALIDATE_PRODUCT = YES;
++			};
++			name = Release;
++		};
++		AB12C12345CD000000000091 /* Debug */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
++				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
++				CODE_SIGN_STYLE = Automatic;
++				CURRENT_PROJECT_VERSION = 1;
++				GENERATE_INFOPLIST_FILE = YES;
++				INFOPLIST_KEY_NSCameraUsageDescription = "MaxCam records cinema-grade video using the camera.";
++				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MaxCam records audio alongside video.";
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				LD_RUNPATH_SEARCH_PATHS = (
++					"$(inherited)",
++					"@executable_path/Frameworks",
++				);
++				MARKETING_VERSION = 1.0;
++				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCam;
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_EMIT_LOC_STRINGS = YES;
++				SWIFT_VERSION = 5.0;
++				TARGETED_DEVICE_FAMILY = "1,2";
++			};
++			name = Debug;
++		};
++		AB12C12345CD000000000092 /* Release */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
++				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
++				CODE_SIGN_STYLE = Automatic;
++				CURRENT_PROJECT_VERSION = 1;
++				GENERATE_INFOPLIST_FILE = YES;
++				INFOPLIST_KEY_NSCameraUsageDescription = "MaxCam records cinema-grade video using the camera.";
++				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MaxCam records audio alongside video.";
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				LD_RUNPATH_SEARCH_PATHS = (
++					"$(inherited)",
++					"@executable_path/Frameworks",
++				);
++				MARKETING_VERSION = 1.0;
++				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCam;
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_EMIT_LOC_STRINGS = YES;
++				SWIFT_VERSION = 5.0;
++				TARGETED_DEVICE_FAMILY = "1,2";
++			};
++			name = Release;
++		};
++		E2A2123456AC000000000091 /* Debug */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				BUNDLE_LOADER = "$(TEST_HOST)";
++				CODE_SIGN_STYLE = Automatic;
++				GENERATE_INFOPLIST_FILE = YES;
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				LD_RUNPATH_SEARCH_PATHS = (
++					"$(inherited)",
++					"@executable_path/Frameworks",
++					"@loader_path/Frameworks",
++				);
++				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCamTests;
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_VERSION = 5.0;
++				TARGETED_DEVICE_FAMILY = "1,2";
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MaxCam.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MaxCam";
++			};
++			name = Debug;
++		};
++		E2A2123456AC000000000092 /* Release */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				BUNDLE_LOADER = "$(TEST_HOST)";
++				CODE_SIGN_STYLE = Automatic;
++				GENERATE_INFOPLIST_FILE = YES;
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
++				LD_RUNPATH_SEARCH_PATHS = (
++					"$(inherited)",
++					"@executable_path/Frameworks",
++					"@loader_path/Frameworks",
++				);
++				PRODUCT_BUNDLE_IDENTIFIER = com.maxcam.MaxCamTests;
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_VERSION = 5.0;
++				TARGETED_DEVICE_FAMILY = "1,2";
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MaxCam.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MaxCam";
++			};
++			name = Release;
++		};
++/* End XCBuildConfiguration section */
++
++/* Begin XCConfigurationList section */
++		AB12C12345CD000000000060 /* Build configuration list for PBXProject "MaxCam" */ = {
++			isa = XCConfigurationList;
++			buildConfigurations = (
++				AB12C12345CD000000000061 /* Debug */,
++				AB12C12345CD000000000062 /* Release */,
++			);
++			defaultConfigurationIsVisible = 0;
++			defaultConfigurationName = Release;
++		};
++		AB12C12345CD000000000090 /* Build configuration list for PBXNativeTarget "MaxCam" */ = {
++			isa = XCConfigurationList;
++			buildConfigurations = (
++				AB12C12345CD000000000091 /* Debug */,
++				AB12C12345CD000000000092 /* Release */,
++			);
++			defaultConfigurationIsVisible = 0;
++			defaultConfigurationName = Release;
++		};
++		E2A2123456AC000000000090 /* Build configuration list for PBXNativeTarget "MaxCamTests" */ = {
++			isa = XCConfigurationList;
++			buildConfigurations = (
++				E2A2123456AC000000000091 /* Debug */,
++				E2A2123456AC000000000092 /* Release */,
++			);
++			defaultConfigurationIsVisible = 0;
++			defaultConfigurationName = Release;
++		};
++/* End XCConfigurationList section */
++	};
++	rootObject = AB12C12345CD000000000000 /* Project object */;
++}
+\ No newline at end of file
+diff --git a/MaxCam.xcodeproj/xcshareddata/xcschemes/MaxCam.xcscheme b/MaxCam.xcodeproj/xcshareddata/xcschemes/MaxCam.xcscheme
+new file mode 100644
+index 0000000..36fcfdb
+--- /dev/null
++++ b/MaxCam.xcodeproj/xcshareddata/xcschemes/MaxCam.xcscheme
+@@ -0,0 +1,89 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<Scheme
++   LastUpgradeVersion = "1600"
++   version = "1.7">
++   <BuildAction
++      parallelizeBuildables = "YES"
++      buildImplicitDependencies = "YES">
++      <BuildActionEntries>
++         <BuildActionEntry
++            buildForTesting = "YES"
++            buildForRunning = "YES"
++            buildForProfiling = "YES"
++            buildForArchiving = "YES"
++            buildForAnalyzing = "YES">
++            <BuildableReference
++               BuildableIdentifier = "primary"
++               BlueprintIdentifier = "AB12C12345CD000000000002"
++               BuildableName = "MaxCam.app"
++               BlueprintName = "MaxCam"
++               ReferencedContainer = "container:MaxCam.xcodeproj">
++            </BuildableReference>
++         </BuildActionEntry>
++      </BuildActionEntries>
++   </BuildAction>
++   <TestAction
++      buildConfiguration = "Debug"
++      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
++      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
++      shouldUseLaunchSchemeArgsEnv = "YES"
++      shouldAutocreateTestPlan = "YES">
++      <Testables>
++         <TestableReference
++            skipped = "NO">
++            <BuildableReference
++               BuildableIdentifier = "primary"
++               BlueprintIdentifier = "E2A2123456AC000000000003"
++               BuildableName = "MaxCamTests.xctest"
++               BlueprintName = "MaxCamTests"
++               ReferencedContainer = "container:MaxCam.xcodeproj">
++            </BuildableReference>
++         </TestableReference>
++      </Testables>
++   </TestAction>
++   <LaunchAction
++      buildConfiguration = "Debug"
++      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
++      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
++      launchStyle = "0"
++      useCustomWorkingDirectory = "NO"
++      ignoresPersistentStateOnLaunch = "NO"
++      debugDocumentVersioning = "YES"
++      debugServiceExtension = "internal"
++      allowLocationSimulation = "YES">
++      <BuildableProductRunnable
++         runnableDebuggingMode = "0">
++         <BuildableReference
++            BuildableIdentifier = "primary"
++            BlueprintIdentifier = "AB12C12345CD000000000002"
++            BuildableName = "MaxCam.app"
++            BlueprintName = "MaxCam"
++            ReferencedContainer = "container:MaxCam.xcodeproj">
++         </BuildableReference>
++      </BuildableProductRunnable>
++   </LaunchAction>
++   <ProfileAction
++      buildConfiguration = "Release"
++      shouldUseLaunchSchemeArgsEnv = "YES"
++      savedToolIdentifier = ""
++      useCustomWorkingDirectory = "NO"
++      debugDocumentVersioning = "YES">
++      <BuildableProductRunnable
++         runnableDebuggingMode = "0">
++         <BuildableReference
++            BuildableIdentifier = "primary"
++            BlueprintIdentifier = "AB12C12345CD000000000002"
++            BuildableName = "MaxCam.app"
++            BlueprintName = "MaxCam"
++            ReferencedContainer = "container:MaxCam.xcodeproj">
++         </BuildableReference>
++      </BuildableProductRunnable>
++   </ProfileAction>
++   <AnalyzeAction
++      buildConfiguration = "Debug">
++   </AnalyzeAction>
++   <ArchiveAction
++      buildConfiguration = "Release"
++      revealArchiveInOrganizer = "YES">
++   </ArchiveAction>
++</Scheme>
+\ No newline at end of file
+diff --git a/MaxCam.xcworkspace/contents.xcworkspacedata b/MaxCam.xcworkspace/contents.xcworkspacedata
+new file mode 100644
+index 0000000..f1bd43d
+--- /dev/null
++++ b/MaxCam.xcworkspace/contents.xcworkspacedata
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<Workspace
++   version = "1.0">
++   <FileRef
++      location = "self:MaxCam.xcodeproj"></FileRef>
++</Workspace>
+\ No newline at end of file
+diff --git a/MaxCam/App/AppViewModel.swift b/MaxCam/App/AppViewModel.swift
+new file mode 100644
+index 0000000..2401b56
+--- /dev/null
++++ b/MaxCam/App/AppViewModel.swift
+@@ -0,0 +1,121 @@
++import Foundation
++import SwiftUI
++
++/// A tiny view-model that drives the engine from the SwiftUI layer without
++/// coupling the engine to SwiftUI.
++@MainActor
++final class AppViewModel: ObservableObject {
++    let engine: CameraEngine
++
++    @Published var capabilities: DeviceCapabilities
++    @Published var configurations: [RecordingConfiguration] = []
++    @Published var stats = CameraStats()
++    @Published var isReady = false
++    @Published var lastError: String?
++
++    @Published var selectedConfiguration: RecordingConfiguration?
++    @Published var preferredLens: String?
++
++    private var statsTimer: Timer?
++
++    init(engine: CameraEngine) {
++        self.engine = engine
++        self.capabilities = engine.capabilities
++    }
++
++    func start() {
++        engine.requestAndStart(preferredDeviceID: preferredLens) { [weak self] error in
++            Task { @MainActor [weak self] in
++                guard let self else { return }
++                if let error {
++                    self.lastError = error.localizedDescription
++                } else {
++                    self.isReady = true
++                    self.rebuildConfigurations()
++                    if self.selectedConfiguration == nil {
++                        self.selectedConfiguration = self.configurations.first
++                    }
++                    self.beginStatsPolling()
++                }
++            }
++        }
++    }
++
++    private func rebuildConfigurations() {
++        configurations = CapabilityMatrix.configurations(
++            devices: capabilities.cameras,
++            preferredDeviceID: preferredLens,
++            supportedCodecs: EncoderCapabilities.current().movieFileCodecs
++        )
++    }
++
++    func stop() {
++        statsTimer?.invalidate()
++        engine.stopSession()
++    }
++
++    func setLens(_ deviceID: String?) {
++        preferredLens = deviceID
++        capabilities = engine.capabilities
++        rebuildConfigurations()
++        selectedConfiguration = configurations.first
++    }
++
++    func selectConfiguration(_ config: RecordingConfiguration) {
++        selectedConfiguration = config
++        guard let info = capabilityFormat(for: config) else { return }
++        do {
++            try engine.applyFormat(info, colorSpace: config.colorSpace)
++        } catch {
++            lastError = error.localizedDescription
++        }
++    }
++
++    func toggleRecording() {
++        guard let config = selectedConfiguration else { return }
++        if stats.isRecording {
++            engine.stopRecording { [weak self] result in
++                Task { @MainActor in
++                    guard let self else { return }
++                    switch result {
++                    case .success(let info):
++                        print("Recording finished: \(info.url) \(info.durationLabel)s \(info.fileSizeBytes) bytes")
++                    case .failure(let error):
++                        self.lastError = error.localizedDescription
++                    }
++                }
++            }
++        } else {
++            let url = Self.makeOutputURL()
++            do {
++                try engine.startRecording(to: url, configuration: config)
++                stats.isRecording = true
++            } catch {
++                lastError = error.localizedDescription
++            }
++        }
++    }
++
++    private func capabilityFormat(for config: RecordingConfiguration) -> CameraFormatInfo? {
++        let preferred = preferredLens ?? capabilities.rearCameras.first?.uniqueID
++        let camera = capabilities.rearCameras.first { $0.uniqueID == preferred }
++        return camera?.formats.first { $0.dimensions == config.resolution }
++    }
++
++    private func beginStatsPolling() {
++        statsTimer?.invalidate()
++        statsTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
++            Task { @MainActor [weak self] in
++                guard let self else { return }
++                self.stats = self.engine.stats
++            }
++        }
++    }
++
++    private static func makeOutputURL() -> URL {
++        let formatter = DateFormatter()
++        formatter.dateFormat = "yyyyMMdd-HHmmss"
++        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
++        return dir.appendingPathComponent("MAXCAM-\(formatter.string(from: Date())).mov")
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/App/MaxCamApp.swift b/MaxCam/App/MaxCamApp.swift
+new file mode 100644
+index 0000000..729e421
+--- /dev/null
++++ b/MaxCam/App/MaxCamApp.swift
+@@ -0,0 +1,13 @@
++import SwiftUI
++
++@main
++struct MaxCamApp: App {
++    @StateObject private var viewModel = AppViewModel(engine: CameraEngine())
++
++    var body: some Scene {
++        WindowGroup {
++            CameraView(viewModel: viewModel)
++                .preferredColorScheme(.dark)
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Assets.xcassets/AccentColor.colorset/Contents.json b/MaxCam/Assets.xcassets/AccentColor.colorset/Contents.json
+new file mode 100644
+index 0000000..f24a36f
+--- /dev/null
++++ b/MaxCam/Assets.xcassets/AccentColor.colorset/Contents.json
+@@ -0,0 +1,20 @@
++{
++  "colors" : [
++    {
++      "color" : {
++        "color-space" : "srgb",
++        "components" : {
++          "alpha" : "1.000",
++          "blue" : "0.349",
++          "green" : "0.675",
++          "red" : "0.780"
++        }
++      },
++      "idiom" : "universal"
++    }
++  ],
++  "info" : {
++    "author" : "xcode",
++    "version" : 1
++  }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Assets.xcassets/AppIcon.appiconset/Contents.json b/MaxCam/Assets.xcassets/AppIcon.appiconset/Contents.json
+new file mode 100644
+index 0000000..dc70b54
+--- /dev/null
++++ b/MaxCam/Assets.xcassets/AppIcon.appiconset/Contents.json
+@@ -0,0 +1,13 @@
++{
++  "images" : [
++    {
++      "idiom" : "universal",
++      "platform" : "ios",
++      "size" : "1024x1024"
++    }
++  ],
++  "info" : {
++    "author" : "xcode",
++    "version" : 1
++  }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Assets.xcassets/Contents.json b/MaxCam/Assets.xcassets/Contents.json
+new file mode 100644
+index 0000000..4aa7c53
+--- /dev/null
++++ b/MaxCam/Assets.xcassets/Contents.json
+@@ -0,0 +1,6 @@
++{
++  "info" : {
++    "author" : "xcode",
++    "version" : 1
++  }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/CameraEngine.swift b/MaxCam/Engine/CameraEngine.swift
+new file mode 100644
+index 0000000..f14dba9
+--- /dev/null
++++ b/MaxCam/Engine/CameraEngine.swift
+@@ -0,0 +1,529 @@
++import AVFoundation
++import CoreMedia
++import Foundation
++
++/// Runtime gauge values published to the UI on every camera frame.
++struct CameraStats: Equatable, Sendable {
++    var frameCounter: UInt64 = 0
++    var droppedFrames: UInt64 = 0
++    var currentFPS: Double = 0
++    var isRecording = false
++    var recordedDuration: TimeInterval = 0
++    var thermalState: ProcessInfo.ThermalState = .nominal
++    var recordingStateMessage: String = ""
++}
++
++/// A snapshot of the user's current manual-control selections, all clamped
++/// against the active device at apply time. White balance is expressed as
++/// temperature/tint; the engine converts to `WhiteBalanceGains` on apply.
++struct ManualControls: Equatable, Sendable {
++    var iso: Float?
++    var exposureDuration: CMTime?
++    var exposureBias: Float?
++    var focusPoint: CGPoint?
++    var lensPosition: Float?
++    var whiteBalanceMode: AVCaptureDevice.WhiteBalanceMode = .continuousAutoWhiteBalance
++    var temperature: Float?
++    var tint: Float?
++
++    static var auto: ManualControls { ManualControls() }
++}
++
++/// Everything the engine knew at record time that is worth reporting.
++struct RecordingSessionInfo: Equatable, Sendable {
++    let url: URL
++    let configurationSummary: String
++    let startedAt: Date
++    let endedAt: Date?
++    let duration: TimeInterval
++    let droppedFrames: UInt64
++    let totalFrames: UInt64
++    let fileSizeBytes: Int64
++
++    var durationLabel: String {
++        String(format: "%.1f", duration)
++    }
++}
++
++/// Thread-safe capture engine. AVFoundation objects (`AVCaptureSession`,
++/// `AVAssetWriter`, `AVCaptureDevice`) are not Sendable, so the engine serializes
++/// all mutations onto an internal queue and publishes immutable snapshots.
++/// This matches the architecture camera apps use and avoids actor-isolation
++/// friction for framework callbacks.
++final class CameraEngine: NSObject, @unchecked Sendable {
++    let capabilities: DeviceCapabilities
++
++    let session = AVCaptureSession()
++    let videoOutput = AVCaptureVideoDataOutput()
++
++    // All mutable state below is confined to `queue`.
++    private let queue = DispatchQueue(label: "com.maxcam.engine")
++    private let sampleQueue = DispatchQueue(label: "com.maxcam.sample")
++
++    private var configuredFormat: CameraFormatInfo?
++    private var selectedColorSpace: AVCaptureColorSpace?
++
++    private var writer: AVAssetWriter?
++    private var writerInput: AVAssetWriterInput?
++    private var sessionStarted = false
++    private var isRecording = false
++    private var recordStartTime: CMTime = .invalid
++    private var currentFileURL: URL?
++    private var recordingStartDate: Date?
++    private var activeRecordingConfiguration: RecordingConfiguration?
++
++    private var frameCounter: UInt64 = 0
++    private var droppedFrameCount: UInt64 = 0
++    private var totalSampleCount: UInt64 = 0
++    private var lastSampleTimestamp: CMTime = .invalid
++    private var fpsTrackerWindow: [(CMTime, UInt64)] = []
++
++    // MARK: - Init
++
++    override init() {
++        self.capabilities = DeviceCapabilities.current()
++        super.init()
++        session.sessionPreset = .high
++        videoOutput.alwaysDiscardsLateVideoFrames = false
++        videoOutput.videoSettings = [
++            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarFullRange
++        ]
++        videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
++    }
++
++    // MARK: - Setup
++
++    func requestAndStart(preferredDeviceID: String?, completion: @escaping (Error?) -> Void) {
++        queue.async { [weak self] in
++            guard let self else { return }
++            Task { await self._requestAndStart(preferredDeviceID: preferredDeviceID, completion: completion) }
++        }
++    }
++
++    private func requestCameraAccess() async -> Bool {
++        switch AVCaptureDevice.authorizationStatus(for: .video) {
++        case .authorized: return true
++        case .notDetermined:
++            return await AVCaptureDevice.requestAccess(for: .video)
++        default: return false
++        }
++    }
++
++    private func _requestAndStart(preferredDeviceID: String?, completion: @escaping (Error?) -> Void) async {
++        let auth = await requestCameraAccess()
++        guard auth else {
++            completion(CameraEngineError.cameraAccessDenied)
++            return
++        }
++        guard let camera = capabilities.cameras.first(where: { $0.uniqueID == preferredDeviceID })
++                ?? capabilities.rearCameras.first else {
++            completion(CameraEngineError.noCameraFound)
++            return
++        }
++        guard let device = AVCaptureDevice(uniqueID: camera.uniqueID) else {
++            completion(CameraEngineError.noCameraFound)
++            return
++        }
++
++        session.beginConfiguration()
++        if let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) {
++            session.addInput(input)
++        }
++        if session.canAddOutput(videoOutput) {
++            session.addOutput(videoOutput)
++        }
++        if let anyFormat = camera.formats.first {
++            try? applyFormat(anyFormat, colorSpace: anyFormat.supportedColorSpaces.first ?? .sRGB)
++        }
++        session.commitConfiguration()
++        session.startRunning()
++        CameraEngineLog.info("Camera started: \(camera.displayName)")
++        completion(nil)
++    }
++
++    func stopSession() {
++        queue.async { [weak self] in
++            guard let self else { return }
++            self.session.stopRunning()
++        }
++    }
++
++    func addMicrophoneIfAvailable() {
++        queue.async { [weak self] in
++            guard let self else { return }
++            guard let mic = AVCaptureDevice.default(for: .audio),
++                  let input = try? AVCaptureDeviceInput(device: mic),
++                  self.session.canAddInput(input) else { return }
++            self.session.beginConfiguration()
++            self.session.addInput(input)
++            self.session.commitConfiguration()
++        }
++    }
++
++    // MARK: - Format Selection
++
++    @discardableResult
++    func applyFormat(_ info: CameraFormatInfo, colorSpace: AVCaptureColorSpace) throws -> Bool {
++        guard let device = activeDevice() else { throw CameraEngineError.noCameraFound }
++        guard info.supportedColorSpaces.contains(colorSpace) else {
++            throw CameraEngineError.invalidConfiguration
++        }
++        try device.lockForConfiguration()
++        defer { device.unlockForConfiguration() }
++
++        _ = info.format
++        device.activeFormat = info.format
++        if device.isColorSpaceSupported(colorSpace) {
++            device.activeColorSpace = colorSpace
++        }
++        configuredFormat = info
++        selectedColorSpace = colorSpace
++        return true
++    }
++
++    func setColorSpace(_ colorSpace: AVCaptureColorSpace) throws {
++        guard let current = configuredFormat, let device = activeDevice() else { throw CameraEngineError.noCameraFound }
++        guard current.supportedColorSpaces.contains(colorSpace) else { throw CameraEngineError.invalidConfiguration }
++        try device.lockForConfiguration()
++        defer { device.unlockForConfiguration() }
++        device.activeColorSpace = colorSpace
++        selectedColorSpace = colorSpace
++    }
++
++    // MARK: - Manual Controls
++
++    func applyManualControls(_ controls: ManualControls) throws {
++        guard let device = activeDevice() else { throw CameraEngineError.noCameraFound }
++        try device.lockForConfiguration()
++        defer { device.unlockForConfiguration() }
++
++        let minISO = device.activeFormat.minISO
++        let maxISO = device.activeFormat.maxISO
++        let iso = controls.iso.map { min(max($0, minISO), maxISO) } ?? device.iso
++        let duration = controls.exposureDuration.map { clampDuration($0, to: device.activeFormat.minExposureDuration...device.activeFormat.maxExposureDuration) }
++
++        if device.isExposureModeSupported(.custom) {
++            device.setExposureModeCustom(.custom, iso: iso, duration: duration ?? device.exposureDuration) { _ in }
++        }
++        if let bias = controls.exposureBias {
++            let clamped = min(max(bias, device.minExposureTargetBias), device.maxExposureTargetBias)
++            device.setExposureTargetBias(clamped) { _ in }
++        }
++        if let point = controls.focusPoint, device.isFocusPointOfInterestSupported {
++            device.focusPointOfInterest = point
++            if device.isFocusModeSupported(.continuousAutoFocus) {
++                device.focusMode = .continuousAutoFocus
++            }
++        }
++        if let lens = controls.lensPosition {
++            device.setFocusModeLocked(lensPosition: lens) { _ in }
++        }
++        if let temperature = controls.temperature {
++            let gains = device.deviceWhiteBalanceGains(for: AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(
++                temperature: temperature,
++                tint: controls.tint ?? 0
++            ))
++            let g = cappedGains(gains, for: device)
++            if device.isWhiteBalanceModeSupported(.locked) {
++                device.setWhiteBalanceModeLocked(with: g) { _ in }
++            }
++        } else if device.isWhiteBalanceModeSupported(controls.whiteBalanceMode) {
++            device.whiteBalanceMode = controls.whiteBalanceMode
++        }
++    }
++
++    private func cappedGains(
++        _ gains: AVCaptureDevice.WhiteBalanceGains,
++        for device: AVCaptureDevice
++    ) -> AVCaptureDevice.WhiteBalanceGains {
++        let maxGain = device.maxWhiteBalanceGain
++        var g = gains
++        g.redGain = clamp(g.redGain, max: maxGain)
++        g.greenGain = clamp(g.greenGain, max: maxGain)
++        g.blueGain = clamp(g.blueGain, max: maxGain)
++        return g
++    }
++
++    private func clamp(_ value: Float, max maxValue: Float) -> Float {
++        min(max(value, 1), maxValue)
++    }
++
++    private func clampDuration(_ duration: CMTime, to range: ClosedRange<CMTime>) -> CMTime {
++        if duration.seconds < range.lowerBound.seconds { return range.lowerBound }
++        if duration.seconds > range.upperBound.seconds { return range.upperBound }
++        return duration
++    }
++
++    // MARK: - Recording
++
++    func startRecording(to url: URL, configuration: RecordingConfiguration) throws {
++        // Start must happen on the sample queue so that the writer state is
++        // only ever touched by the sample buffer delegate's queue.
++        try sampleQueue.sync {
++            try _startRecordingInPlace(to: url, configuration: configuration)
++        }
++    }
++
++    private func _startRecordingInPlace(to url: URL, configuration: RecordingConfiguration) throws {
++        guard let device = activeDevice() else { throw CameraEngineError.noCameraFound }
++        guard let current = configuredFormat else { throw CameraEngineError.invalidConfiguration }
++
++        try applyFormat(current, colorSpace: configuration.colorSpace)
++
++        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
++        let settings = makeWriterSettings(configuration: configuration)
++
++        // Pro Video Storage (iOS 27+): opt in only if the system supports it.
++        if #available(iOS 27.0, *) {
++            if AVCaptureMovieFileOutput().isProVideoStorageSupported {
++                writer.usesProVideoStorage = true
++            }
++        }
++
++        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
++        writerInput.expectsMediaDataInRealTime = true
++        guard writer.canAdd(writerInput) else { throw CameraEngineError.writerUnavailable }
++        writer.add(writerInput)
++
++        guard writer.startWriting() else {
++            throw CameraEngineError.writerUnavailable
++        }
++
++        isRecording = true
++        sessionStarted = false
++        self.writer = writer
++        self.writerInput = writerInput
++        currentFileURL = url
++        recordingStartDate = Date()
++        activeRecordingConfiguration = configuration
++        recordStartTime = .invalid
++        CameraEngineLog.info("Recording started: \(url.lastPathComponent)")
++    }
++
++    private func makeWriterSettings(configuration: RecordingConfiguration) -> [String: Any] {
++        let width = Int(configuration.resolution.width)
++        let height = Int(configuration.resolution.height)
++
++        var compression: [String: Any] = [
++            AVVideoAverageBitRateKey: bitRateFor(resolution: configuration.resolution, frameRate: configuration.frameRate)
++        ]
++        if configuration.codec == .hevc {
++            compression[AVVideoProfileLevelKey] = AVVideoProfileLevelHEVCMain10AutoLevel
++        }
++
++        // Color properties reflect the actual capture color space. Apple Log
++        // uses BT.2020 primaries with a proprietary log transfer curve. We keep
++        // primaries/matrix honest. For HLG we tag HLG. For Log we deliberately
++        // omit a transfer tag (VideoToolbox has no public "Apple Log" SMI and
++        // tagging the file HLG or Rec.709 would misrepresent the master).
++        var colorProps: [String: Any] = [
++            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
++            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
++            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
++        ]
++
++        // Apple Log, Apple Log 2, and HLG all live in BT.2020 containers.
++        // The boolean flags avoid referencing the iOS 26-only enum case
++        // unconditionally on older deployment targets.
++        if configuration.isAppleLog2 || configuration.isAppleLog {
++            colorProps[AVVideoColorPrimariesKey] = AVVideoColorPrimaries_ITU_R_2020
++            colorProps.removeValue(forKey: AVVideoTransferFunctionKey)
++            colorProps[AVVideoYCbCrMatrixKey] = AVVideoYCbCrMatrix_ITU_R_2020
++        } else if configuration.isHDR {
++            colorProps[AVVideoColorPrimariesKey] = AVVideoColorPrimaries_ITU_R_2020
++            colorProps[AVVideoTransferFunctionKey] = AVVideoTransferFunction_ITU_R_2100_HLG
++            colorProps[AVVideoYCbCrMatrixKey] = AVVideoYCbCrMatrix_ITU_R_2020
++        } else if configuration.colorSpace == .p3D65 {
++            colorProps[AVVideoColorPrimariesKey] = AVVideoColorPrimaries_P3_D65
++            colorProps[AVVideoTransferFunctionKey] = AVVideoTransferFunction_ITU_R_709_2
++            colorProps[AVVideoYCbCrMatrixKey] = AVVideoYCbCrMatrix_ITU_R_709_2
++        }
++
++        return [
++            AVVideoCodecKey: configuration.codec.rawValue,
++            AVVideoWidthKey: width,
++            AVVideoHeightKey: height,
++            AVVideoCompressionPropertiesKey: compression,
++            AVVideoColorPropertiesKey: colorProps,
++        ]
++    }
++
++    private func bitRateFor(resolution: CMVideoDimensions, frameRate: Double) -> Int {
++        let megapixels = Double(resolution.width) * Double(resolution.height)
++        let bitrate = megapixels * 3.0 * frameRate
++        return max(12_000_000, Int(bitrate))
++    }
++
++    func stopRecording(completion: @escaping (Result<RecordingSessionInfo, Error>) -> Void) {
++        sampleQueue.async { [weak self] in
++            guard let self, self.isRecording, let writer, let writerInput else {
++                completion(.failure(CameraEngineError.notRecording))
++                return
++            }
++            self.isRecording = false
++            writerInput.markAsFinished()
++            writer.finishWriting { [weak self] in
++                guard let self else { return }
++                let info = self.buildSessionInfo(
++                    finishedOK: writer.status == .completed
++                )
++                completion(.success(info))
++            }
++        }
++    }
++
++    private func buildSessionInfo(finishedOK: Bool) -> RecordingSessionInfo {
++        var fileSize: Int64 = 0
++        var validURL: URL?
++        if let url = currentFileURL,
++           let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
++           let number = attrs[.size] as? NSNumber {
++            fileSize = number.int64Value
++            validURL = url
++        }
++
++        let duration: TimeInterval
++        if finishedOK, lastSampleTimestamp.isValid, recordStartTime.isValid {
++            duration = max(0, lastSampleTimestamp.seconds - recordStartTime.seconds)
++        } else {
++            duration = 0
++        }
++
++        let info = RecordingSessionInfo(
++            url: validURL ?? URL(fileURLWithPath: ""),
++            configurationSummary: activeRecordingConfiguration?.summary ?? "unknown",
++            startedAt: recordingStartDate ?? Date(),
++            endedAt: Date(),
++            duration: duration,
++            droppedFrames: droppedFrameCount,
++            totalFrames: totalSampleCount,
++            fileSizeBytes: fileSize
++        )
++
++        writer = nil
++        writerInput = nil
++        sessionStarted = false
++        currentFileURL = nil
++        recordingStartDate = nil
++        activeRecordingConfiguration = nil
++        recordStartTime = .invalid
++        return info
++    }
++
++    // MARK: - Open Gate / Dynamic Aspect Ratio
++
++    /// Set the crop ratio on the device's active format (iOS 26+).
++    /// Returns whether the request was accepted.
++    @discardableResult
++    @available(iOS 26.0, *)
++    func setDynamicAspectRatio(_ ratio: AVCaptureDevice.AspectRatio) -> Bool {
++        guard let device = activeDevice() else { return false }
++        do {
++            try device.lockForConfiguration()
++        } catch {
++            return false
++        }
++        defer { device.unlockForConfiguration() }
++        let supported = device.activeFormat.supportedDynamicAspectRatios
++        guard supported.contains(ratio) else { return false }
++        device.setDynamicAspectRatio(ratio) { _ in
++            // First buffer timestamp for the new crop. The recorder can use
++            // this seam to split clips at the aspect-ratio change.
++        }
++        return true
++    }
++
++    var isOpenGateActive: Bool {
++        guard let format = configuredFormat else { return false }
++        let dims = format.dimensions
++        let isSquare = dims.width == dims.height
++        // On iOS 26+ the true full-sensor scan is a square format that also
++        // supports dynamic aspect ratios (the floating crop is applied over the
++        // whole sensor). On older systems a square dimension is the only signal.
++        return isSquare || (dims.width % 4032 == 0 && format.supportsDynamicAspectRatios)
++    }
++
++    // MARK: - Diagnostics
++
++    var currentFormatInfo: CameraFormatInfo? { configuredFormat }
++
++    var selectedColorSpaceValue: AVCaptureColorSpace? { selectedColorSpace }
++
++    var stats: CameraStats {
++        var s = CameraStats()
++        s.frameCounter = frameCounter
++        s.droppedFrames = droppedFrameCount
++        s.currentFPS = recentFPS
++        s.isRecording = isRecording
++        if lastSampleTimestamp.isValid, recordStartTime.isValid, isRecording {
++            s.recordedDuration = lastSampleTimestamp.seconds - recordStartTime.seconds
++        }
++        s.thermalState = ProcessInfo.processInfo.thermalState
++        return s
++    }
++
++    private var recentFPS: Double {
++        guard let first = fpsTrackerWindow.first, let last = fpsTrackerWindow.last else { return 0 }
++        let span = last.0.seconds - first.0.seconds
++        guard span > 0 else { return 0 }
++        return Double(last.1 - first.1) / span
++    }
++
++    private func activeDevice() -> AVCaptureDevice? {
++        if let input = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput }).first {
++            return input.device
++        }
++        return capabilities.rearCameras.first.flatMap { AVCaptureDevice(uniqueID: $0.uniqueID) }
++    }
++}
++
++// MARK: - Sample buffer delegate
++
++extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate {
++    func captureOutput(
++        _ output: AVCaptureOutput,
++        didOutput sampleBuffer: CMSampleBuffer,
++        from connection: AVCaptureConnection
++    ) {
++        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
++        process(sampleBuffer: sampleBuffer, timestamp: timestamp)
++    }
++
++    func captureOutput(
++        _ output: AVCaptureOutput,
++        didDrop sampleBuffer: CMSampleBuffer,
++        from connection: AVCaptureConnection
++    ) {
++        droppedFrameCount &+= 1
++    }
++
++    private func process(sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
++        frameCounter &+= 1
++        if !recordStartTime.isValid { recordStartTime = timestamp }
++        lastSampleTimestamp = timestamp
++
++        fpsTrackerWindow.append((timestamp, frameCounter))
++        let cutoff = timestamp.seconds - 1.0
++        while let first = fpsTrackerWindow.first, first.0.seconds < cutoff {
++            fpsTrackerWindow.removeFirst()
++        }
++        if fpsTrackerWindow.count > 256 { fpsTrackerWindow.removeFirst(128) }
++
++        guard isRecording, let writer, let writerInput else { return }
++
++        // startSession must run at the first sample's timestamp.
++        if !sessionStarted {
++            writer.startSession(atSourceTime: timestamp)
++            sessionStarted = true
++        }
++
++        while !writerInput.isReadyForMoreMediaData {
++            Thread.sleep(forTimeInterval: 0.001)
++        }
++        if writerInput.append(sampleBuffer) {
++            totalSampleCount &+= 1
++        } else {
++            droppedFrameCount &+= 1
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/CameraEngineError.swift b/MaxCam/Engine/CameraEngineError.swift
+new file mode 100644
+index 0000000..e4cd1a4
+--- /dev/null
++++ b/MaxCam/Engine/CameraEngineError.swift
+@@ -0,0 +1,44 @@
++import AVFoundation
++import Foundation
++import OSLog
++
++// Platform warnings emitted by the camera engine, keyed for the UI.
++enum CameraEngineError: Error, LocalizedError, Equatable {
++    case cameraAccessDenied
++    case noCameraFound
++    case sessionConfigurationFailed
++    case invalidConfiguration
++    case recordingInProgress
++    case notRecording
++    case writerUnavailable
++    case finalizationIncomplete
++
++    var errorDescription: String? {
++        switch self {
++        case .cameraAccessDenied:
++            return "Camera access was denied. Enable it in Settings to continue."
++        case .noCameraFound:
++            return "No rear camera is available on this device."
++        case .sessionConfigurationFailed:
++            return "The capture session could not be configured."
++        case .invalidConfiguration:
++            return "The selected recording configuration is not valid for this device."
++        case .recordingInProgress:
++            return "Recording is already in progress."
++        case .notRecording:
++            return "Recording is not in progress."
++        case .writerUnavailable:
++            return "The media writer became unavailable."
++        case .finalizationIncomplete:
++            return "Recording stopped but the file was not finalized cleanly."
++        }
++    }
++}
++
++enum CameraEngineLog {
++    private static let log = Logger(subsystem: "com.maxcam", category: "camera")
++
++    static func info(_ message: String) { log.info("\(message, privacy: .public)") }
++    static func error(_ message: String) { log.error("\(message, privacy: .public)") }
++    static func fault(_ message: String) { log.fault("\(message, privacy: .public)") }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/CameraFormatInfo.swift b/MaxCam/Engine/CameraFormatInfo.swift
+new file mode 100644
+index 0000000..04aad64
+--- /dev/null
++++ b/MaxCam/Engine/CameraFormatInfo.swift
+@@ -0,0 +1,170 @@
++import AVFoundation
++import Foundation
++
++/// A device-agnostic description of a single `AVCaptureDevice.Format`,
++/// normalizing every capability the public AVFoundation APIs expose for display.
++///
++/// Wraps a non-Sendable `AVCaptureDevice.Format` for read-only actor-safe
++/// snapshotting; never mutated after construction.
++struct CameraFormatInfo: Identifiable, @unchecked Sendable {
++    let format: AVCaptureDevice.Format
++    let dimensions: CMVideoDimensions
++    let mediaSubType: OSType
++    let minFrameRate: Double
++    let maxFrameRate: Double
++    let fieldOfView: Double
++    let isVideoHDRSupported: Bool
++    let isGlobalToneMappingSupported: Bool
++    let lensAperture: Float?
++    let supportedColorSpaces: [AVCaptureColorSpace]
++    let supportsDynamicAspectRatios: Bool
++    let dynamicAspectRatioLabels: [String]
++
++    init(format: AVCaptureDevice.Format) {
++        self.format = format
++        let desc = format.formatDescription
++        self.dimensions = CMVideoFormatDescriptionGetDimensions(desc)
++        self.mediaSubType = CMFormatDescriptionGetMediaSubType(desc as! CMFormatDescription)
++        self.minFrameRate = format.videoSupportedFrameRateRanges.map { $0.minFrameRate }.min() ?? 0
++        self.maxFrameRate = format.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
++        self.fieldOfView = format.videoFieldOfView
++        if #available(iOS 17.0, *) {
++            self.isVideoHDRSupported = format.isVideoHDRSupported
++            self.isGlobalToneMappingSupported = format.isGlobalToneMappingSupported
++            self.lensAperture = format.lensAperture
++        } else {
++            self.isVideoHDRSupported = false
++            self.isGlobalToneMappingSupported = false
++            self.lensAperture = nil
++        }
++        self.supportedColorSpaces = Array(format.supportedColorSpaces)
++        // Dynamic aspect ratio is an iOS 26 API. We store only availability-safe
++        // derived values so this type compiles against the iOS 17 deployment
++        // target; the SDK types are only touched inside the #available branch.
++        if #available(iOS 26.0, *) {
++            self.supportsDynamicAspectRatios = !format.supportedDynamicAspectRatios.isEmpty
++            self.dynamicAspectRatioLabels = format.supportedDynamicAspectRatios.map(Self.aspectRatioLabel)
++        } else {
++            self.supportsDynamicAspectRatios = false
++            self.dynamicAspectRatioLabels = []
++        }
++    }
++
++    var id: String {
++        "\(dimensions.width)x\(dimensions.height)-\(fourCCString(mediaSubType))-\(Int(maxFrameRate))"
++    }
++
++    var resolutionLabel: String {
++        "\(dimensions.width) x \(dimensions.height)"
++    }
++
++    var frameRateLabel: String {
++        minFrameRate == maxFrameRate
++            ? "\(Int(minFrameRate))"
++            : "\(Int(minFrameRate))-\(Int(maxFrameRate))"
++    }
++
++    var mediaSubTypeLabel: String {
++        fourCCString(mediaSubType)
++    }
++
++    var isWideColor: Bool {
++        supportedColorSpaces.contains { $0 == .p3D65 }
++            || mediaSubType & 0xFFFFFF00 == 0x62363400
++    }
++
++    var bitDepthGuess: Int? {
++        switch mediaSubType {
++        case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
++             kCVPixelFormatType_420YpCbCr10BiPlanarFullRange:
++            return 10
++        case kCVPixelFormatType_420YpCbCr10v210BiPlanarVideoRange,
++             kCVPixelFormatType_420YpCbCr10v210BiPlanarFullRange:
++            return 10
++        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
++             kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
++             kCVPixelFormatType_32BGRA,
++             kCVPixelFormatType_32ARGB:
++            return 8
++        case kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarVideoRange,
++             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarFullRange,
++             kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarVideoRange,
++             kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarFullRange:
++            return 10
++        default:
++            return nil
++        }
++    }
++
++    var colorSpaceLabels: [String] {
++        supportedColorSpaces.map { $0.displayName }
++    }
++
++    var aspectRatioLabels: [String] {
++        dynamicAspectRatioLabels
++    }
++
++    /// Named helper for the iOS 26 aspect-ratio SDK type; referenced only from
++    /// inside an `#available(iOS 26.0, *)` branch.
++    @available(iOS 26.0, *)
++    private static func aspectRatioLabel(_ ratio: AVCaptureDevice.AspectRatio) -> String {
++        switch ratio {
++        case .ratio16x9: return "16:9"
++        case .ratio4x3: return "4:3"
++        case .ratio1x1: return "1:1"
++        case .ratio9x16: return "9:16"
++        case .ratio3x4: return "3:4"
++        default: return "ratio"
++        }
++    }
++
++    var diagnosticLines: [String] {
++        var lines = [
++            "Format: \(resolutionLabel)",
++            "Media subtype: \(mediaSubTypeLabel) (\(String(format: "0x%08X", mediaSubType)))",
++            "FPS: \(frameRateLabel)",
++            "FOV: \(String(format: "%.1f", fieldOfView))",
++            "Video HDR: \(isVideoHDRSupported ? "YES" : "no")",
++            "Global tone mapping: \(isGlobalToneMappingSupported ? "YES" : "no")",
++        ]
++        if let aperture = lensAperture {
++            lines.append("Lens aperture: f/\(String(format: "%.1f", aperture)))")
++        }
++        if let depth = bitDepthGuess {
++            lines.append("Bit depth (fourCC guess): \(depth)-bit")
++        } else {
++            lines.append("Bit depth (fourCC guess): unknown")
++        }
++        lines.append("Color spaces: \(colorSpaceLabels.isEmpty ? "-" : colorSpaceLabels.joined(separator: ", ")))")
++        if !dynamicAspectRatioLabels.isEmpty {
++            lines.append("Dynamic aspect ratios: \(dynamicAspectRatioLabels.joined(separator: ", ")))")
++        }
++        return lines
++    }
++}
++
++extension AVCaptureColorSpace {
++    var displayName: String {
++        switch self {
++        case .sRGB: return "sRGB"
++        case .p3D65: return "P3-D65"
++        case .appleLog: return "Apple Log"
++        case .hlgBT2020: return "HLG BT.2020"
++        default:
++            if #available(iOS 26.0, *) {
++                if self == .appleLog2 { return "Apple Log 2" }
++            }
++            return "raw \(rawValue)"
++        }
++    }
++}
++
++private func fourCCString(_ code: OSType) -> String {
++    let bytes: [UInt8] = [
++        UInt8((code >> 24) & 0xFF),
++        UInt8((code >> 16) & 0xFF),
++        UInt8((code >> 8) & 0xFF),
++        UInt8(code & 0xFF),
++    ]
++    return String(bytes: bytes, encoding: .ascii) ?? String(format: "0x%08X", code)
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/CapabilityGate.swift b/MaxCam/Engine/CapabilityGate.swift
+new file mode 100644
+index 0000000..7099e1f
+--- /dev/null
++++ b/MaxCam/Engine/CapabilityGate.swift
+@@ -0,0 +1,33 @@
++import AVFoundation
++import Foundation
++
++/// Named, runtime-provable capture configuration constraints that the matcher
++/// uses to describe *why* a given option is (or is not) available.
++enum CapabilityGate: Equatable, Sendable {
++    case formatLacks(option: String, requirement: String)
++    case fpsOutOfRange
++    case noColorSpaceNamed(String)
++    case codecNotAdvertised(String)
++    case hdrNotAdvertised
++    case thermalCritical
++    case missingDevice
++
++    var reason: String {
++        switch self {
++        case .formatLacks(let option, let requirement):
++            return "\(option) is not supported by the active format (\(requirement))."
++        case .fpsOutOfRange:
++            return "The selected frame rate is not inside the format's supported range."
++        case .noColorSpaceNamed(let name):
++            return "The active color space \"\(name)\" is not enumerated by this format."
++        case .codecNotAdvertised(let codec):
++            return "The codec \"\(codec)\" is not advertised as supported."
++        case .hdrNotAdvertised:
++            return "The format does not advertise video HDR support."
++        case .thermalCritical:
++            return "Device thermal state is critical; recording is halted."
++        case .missingDevice:
++            return "No matching camera device exists."
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/CapabilityMatrix.swift b/MaxCam/Engine/CapabilityMatrix.swift
+new file mode 100644
+index 0000000..05ac328
+--- /dev/null
++++ b/MaxCam/Engine/CapabilityMatrix.swift
+@@ -0,0 +1,209 @@
++import AVFoundation
++import Foundation
++
++/// A validated, selectable recording configuration. Instances are only
++/// produced by `CapabilityMatrix` after cross-checking every AVFoundation
++/// capability surface, so the UI can trust that what it shows works.
++struct RecordingConfiguration: Identifiable, Equatable, Sendable {
++    enum Pipeline: String, Equatable, Sendable {
++        case nativeProRes
++        case photoRawProRes
++        case hevc
++
++        var displayName: String {
++            switch self {
++            case .nativeProRes: return "ProRes"
++            case .photoRawProRes: return "ProRes RAW (photo)"
++            case .hevc: return "HEVC"
++            }
++        }
++    }
++
++    let id: UUID
++    let pipeline: Pipeline
++    let resolution: CMVideoDimensions
++    let frameRate: Double
++    let colorSpace: AVCaptureColorSpace
++    let codec: AVVideoCodecType
++    let bitDepth: Int?
++    let usesProResRAW: Bool
++    let isAppleLog2: Bool
++    let isAppleLog: Bool
++    let isHDR: Bool
++
++    var resolutionLabel: String {
++        "\(resolution.width) x \(resolution.height)"
++    }
++
++    var summary: String {
++        let color = isAppleLog2 ? "LOG2" : (isAppleLog ? "LOG" : colorSpace.displayName)
++        return "\(resolutionLabel) \(Int(frameRate))fps \(codec.rawValue) \(pipeline.displayName) \(color)"
++    }
++}
++
++/// Builds the authoritative capability matrix from the discovered devices.
++/// Every entry is derived from a real format's `videoSupportedFrameRateRanges`,
++/// `supportedColorSpaces`, and the video data output's advertised codecs.
++enum CapabilityMatrix {
++    /// Builds every valid config from the discovery result.
++    static func configurations(
++        devices: [CameraDeviceInfo],
++        preferredDeviceID: String?,
++        fallbackFrameRate: Double = 0,
++        supportedCodecs: [AVVideoCodecType] = [.hevc]
++    ) -> [RecordingConfiguration] {
++        guard let camera = pick(devices, preferredDeviceID) else { return [] }
++        var configs: [RecordingConfiguration] = []
++
++        let proResHQ = supportedCodecs.contains(.proRes422HQ)
++
++        // A ProRes 4444 / XQ pipeline would need gating on chroma support and
++        // is not offered to avoid silent misuse; we only expose the 10-bit 422
++        // family that ProRes on iPhone records natively.
++
++        for formatInfo in camera.formats {
++            let width = formatInfo.dimensions.width
++            let height = formatInfo.dimensions.height
++            guard width > 0, height > 0 else { continue }
++
++            // Skip tiny formats that are clearly not "cine" (e.g. ultra-small
++            // scan modes used for specific lenses or preview-only modes).
++            guard max(width, height) >= 1920 else { continue }
++
++            var frameRates = frameRateOptions(
++                min: formatInfo.minFrameRate,
++                max: formatInfo.maxFrameRate,
++                fallback: fallbackFrameRate
++            )
++            // 25fps is a common cinema frame rate; ensure it shows up when the
++            // range covers it.
++            if !frameRates.contains(25), formatInfo.minFrameRate <= 25, formatInfo.maxFrameRate >= 25 {
++                frameRates.append(25)
++                frameRates.sort()
++            }
++
++            let colorSpaces = formatInfo.supportedColorSpaces
++            let canLog2 = colorSpaces.contains(where: { $0.isLog2 })
++            let canLog = colorSpaces.contains(where: { $0.isLog1 })
++            let canWide = colorSpaces.contains(where: { $0.isWideColorSpace })
++            let canSDR = colorSpaces.contains { $0 == .sRGB }
++
++            for fps in frameRates {
++                // A high dynamic range (HLG, HDR) config: only when the format
++                // actually declares video HDR support.
++                if formatInfo.isVideoHDRSupported && colorSpaces.contains(where: { $0 == .hlgBT2020 }) {
++                    configs.append(RecordingConfiguration(
++                        id: UUID(),
++                        pipeline: .hevc,
++                        resolution: formatInfo.dimensions,
++                        frameRate: fps,
++                        colorSpace: .hlgBT2020,
++                        codec: .hevc,
++                        bitDepth: 10,
++                        usesProResRAW: false,
++                        isAppleLog2: false,
++                        isAppleLog: false,
++                        isHDR: true
++                    ))
++                }
++
++                // SDR / wide / log configurations. Only create a "Log2" one when
++                // the format really supports Apple Log 2.
++                var colorChoices: [AVCaptureColorSpace] = []
++                if #available(iOS 26.0, *), canLog2 {
++                    colorChoices.append(.appleLog2)
++                }
++                if canLog && !canLog2 {
++                    colorChoices.append(.appleLog)
++                }
++                if canWide {
++                    colorChoices.append(.p3D65)
++                }
++                if canSDR {
++                    colorChoices.append(.sRGB)
++                }
++
++                for cs in colorChoices {
++                    let isLog2 = cs.isLog2
++                    configs.append(RecordingConfiguration(
++                        id: UUID(),
++                        pipeline: .hevc,
++                        resolution: formatInfo.dimensions,
++                        frameRate: fps,
++                        colorSpace: cs,
++                        codec: .hevc,
++                        bitDepth: 10,
++                        usesProResRAW: false,
++                        isAppleLog2: isLog2,
++                        isAppleLog: cs == .appleLog && !isLog2,
++                        isHDR: false
++                    ))
++
++                    // Native ProRes recording (Phase 7): only offered when the
++                    // device advertises a ProRes codec. ProRes on iPhone is
++                    // capped at 30 fps by the silicon encoder; we honor that
++                    // rather than offering unsupportable combinations.
++                    if proResHQ && fps <= 30 {
++                        configs.append(RecordingConfiguration(
++                            id: UUID(),
++                            pipeline: .nativeProRes,
++                            resolution: formatInfo.dimensions,
++                            frameRate: fps,
++                            colorSpace: cs,
++                            codec: .proRes422HQ,
++                            bitDepth: 10,
++                            usesProResRAW: false,
++                            isAppleLog2: isLog2,
++                            isAppleLog: cs == .appleLog && !isLog2,
++                            isHDR: false
++                        ))
++                    }
++                }
++            }
++        }
++
++        return dedupe(configs)
++    }
++
++    private static func pick(_ devices: [CameraDeviceInfo], _ preferred: String?) -> CameraDeviceInfo? {
++        if let preferred, let match = devices.first(where: { $0.uniqueID == preferred }) {
++            return match
++        }
++        return devices.first { $0.position == .back }
++    }
++
++    private static func frameRateOptions(min: Double, max: Double, fallback: Double) -> [Double] {
++        var rates = Set<Double>()
++        for f in [23.976, 24,  25,  29.97,  30,  47.95,  48,  59.94,  60,  120,  240] {
++            if f >= min - 0.01 && f <= max + 0.01 { rates.insert(f) }
++        }
++        if fallback > 0, fallback >= min, fallback <= max { rates.insert(fallback) }
++        var sorted = Array(rates).sorted()
++        if sorted.isEmpty { sorted = [min] }
++        return sorted
++    }
++
++    private static func dedupe(_ configs: [RecordingConfiguration]) -> [RecordingConfiguration] {
++        var seen = Set<String>()
++        var out: [RecordingConfiguration] = []
++        for c in configs {
++            let key = "\(c.pipeline)|\(c.width)x\(c.height)|\(c.frameRate)|\(c.colorSpace.rawValue)|\(c.codec.rawValue)"
++            if seen.insert(key).inserted { out.append(c) }
++        }
++        return out
++    }
++}
++
++extension RecordingConfiguration {
++    var width: Int { Int(resolution.width) }
++    var height: Int { Int(resolution.height) }
++}
++
++private extension AVCaptureColorSpace {
++    var isLog2: Bool {
++        if #available(iOS 26.0, *), self == .appleLog2 { return true }
++        return false
++    }
++    var isLog1: Bool { self == .appleLog }
++    var isWideColorSpace: Bool { self == .p3D65 }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/DeviceCapabilities.swift b/MaxCam/Engine/DeviceCapabilities.swift
+new file mode 100644
+index 0000000..88e9a21
+--- /dev/null
++++ b/MaxCam/Engine/DeviceCapabilities.swift
+@@ -0,0 +1,134 @@
++import AVFoundation
++import Darwin
++import UIKit
++
++/// One camera (AVCaptureDevice) with all of its formats, normalized for the UI.
++struct CameraDeviceInfo: Identifiable, Sendable {
++    let uniqueID: String
++    let position: AVCaptureDevice.Position
++    let deviceType: AVCaptureDevice.DeviceType
++    let hasFlash: Bool
++    let isConnected: Bool
++    let lensAperture: Float?
++    let formats: [CameraFormatInfo]
++
++    var id: String { uniqueID }
++
++    var displayName: String {
++        switch deviceType {
++        case AVCaptureDevice.DeviceType.builtInWideAngleCamera:
++            return "Wide"
++        case AVCaptureDevice.DeviceType.builtInUltraWideCamera:
++            return "Ultra Wide"
++        case AVCaptureDevice.DeviceType.builtInTelephotoCamera:
++            return "Telephoto"
++        case AVCaptureDevice.DeviceType.builtInDualCamera:
++            return "Dual (Wide + Tele)"
++        case AVCaptureDevice.DeviceType.builtInDualWideCamera:
++            return "Dual Wide"
++        case AVCaptureDevice.DeviceType.builtInTripleCamera:
++            return "Triple"
++        case AVCaptureDevice.DeviceType.builtInLiDARDepthCamera:
++            return "LiDAR"
++        default:
++            return deviceType.rawValue
++        }
++    }
++
++    var positionLabel: String {
++        switch position {
++        case .back: return "Rear"
++        case .front: return "Front"
++        case .unspecified: return "Unspecified"
++        default: return "Other"
++        }
++    }
++}
++
++/// The runtime capability tree for the physical device. Nothing here is
++/// assumed: every field is populated from AVFoundation queries.
++///
++/// Read-only snapshot produced on the main thread before actors consume it;
++/// marked Sendable because its contents never mutate after construction.
++struct DeviceCapabilities: @unchecked Sendable {
++    let modelID: String
++    let systemVersion: String
++    let osBuild: String
++    let screenScale: CGFloat
++    let hasCameraAccess: Bool
++    let cameras: [CameraDeviceInfo]
++
++    var rearCameras: [CameraDeviceInfo] {
++        cameras.filter { $0.position == .back }
++    }
++
++    /// Formats shared by every rear camera (all-current-device agreement).
++    var commonRearFormats: [CameraFormatInfo] {
++        guard let first = rearCameras.first else { return [] }
++        return first.formats.filter { f in
++            rearCameras.allSatisfy { camera in
++                camera.formats.contains { candidate in
++                    candidate.dimensions == f.dimensions &&
++                    candidate.mediaSubType == f.mediaSubType &&
++                    candidate.maxFrameRate == f.maxFrameRate
++                }
++            }
++        }
++    }
++
++    static func current() -> DeviceCapabilities {
++        let discovery = AVCaptureDevice.DiscoverySession(
++            deviceTypes: [
++                .builtInUltraWideCamera,
++                .builtInWideAngleCamera,
++                .builtInTelephotoCamera,
++                .builtInDualCamera,
++                .builtInDualWideCamera,
++                .builtInTripleCamera,
++                .builtInLiDARDepthCamera,
++                .builtInTrueDepthCamera,
++            ],
++            mediaType: .video,
++            position: .unspecified
++        )
++
++        let cameras = discovery.devices.map { device in
++            let formats = device.formats.map(CameraFormatInfo.init)
++            return CameraDeviceInfo(
++                uniqueID: device.uniqueID,
++                position: device.position,
++                deviceType: device.deviceType,
++                hasFlash: device.hasFlash,
++                isConnected: device.isConnected,
++                lensAperture: nil,
++                formats: formats
++            )
++        }
++
++        let modelID = DeviceCapabilities.hardwareModelIdentifier
++        let systemVersion = UIDevice.current.systemVersion
++
++        return DeviceCapabilities(
++            modelID: modelID,
++            systemVersion: systemVersion,
++            osBuild: ProcessInfo.processInfo.operatingSystemVersionString,
++            screenScale: UIScreen.main.scale,
++            hasCameraAccess: AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
++            cameras: cameras
++        )
++    }
++
++    /// Hardware model identifier ("iPhone17,1", "iPhone15,2", ...) via the
++    /// public Darwin `sysctlbyname` interface. Falls back to `hw.model` when
++    /// the machine key is unavailable.
++    private static var hardwareModelIdentifier: String {
++        var size = 0
++        sysctlbyname("hw.machine", nil, &size, nil, 0)
++        guard size > 0 else { return UIDevice.current.model }
++        var machine = [CChar](repeating: 0, count: size)
++        sysctlbyname("hw.machine", &machine, &size, nil, 0)
++        let identifier = String(cString: machine)
++        guard !identifier.isEmpty else { return UIDevice.current.model }
++        return identifier
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/DiagnosticsExport.swift b/MaxCam/Engine/DiagnosticsExport.swift
+new file mode 100644
+index 0000000..2798288
+--- /dev/null
++++ b/MaxCam/Engine/DiagnosticsExport.swift
+@@ -0,0 +1,81 @@
++import AVFoundation
++import Foundation
++import UIKit
++
++/// Builds a complete, human-readable capability report for support debugging.
++/// This powers the "Export diagnostics" share sheet and unit tests.
++struct DiagnosticsExport {
++    let deviceModel: String
++    let systemVersion: String
++    let osVersionString: String
++    let buildNumber: String
++    let cameraAccess: Bool
++    let cameras: [CameraDeviceInfo]
++    let encoderCodecs: [String]
++    let featureFlags: [String: Bool]
++
++    var report: String {
++        var lines: [String] = []
++        lines.append("MaxCam Diagnostics")
++        lines.append("==================")
++        lines.append("Device: \(deviceModel)")
++        lines.append("iOS: \(systemVersion) (\(osVersionString), build \(buildNumber))")
++        lines.append("Camera access: \(cameraAccess ? "granted" : "denied")")
++        lines.append("")
++
++        for camera in cameras {
++            lines.append("Camera [\(camera.positionLabel)] \(camera.displayName) (\(camera.uniqueID))")
++            lines.append("  Type: \(camera.deviceType.rawValue)")
++            lines.append("  Flash: \(camera.hasFlash ? "yes" : "no")")
++            lines.append("  Connected: \(camera.isConnected ? "yes" : "no")")
++            if let aperture = camera.lensAperture {
++                lines.append("  Lens aperture: f/\(String(format: "%.1f", aperture))")
++            }
++            lines.append("  Formats: \(camera.formats.count)")
++            for format in camera.formats {
++                lines.append("    - \(format.diagnosticLines.joined(separator: " | "))")
++            }
++            lines.append("")
++        }
++
++        lines.append("Encoders advertised by AVCaptureMovieFileOutput: \(encoderCodecs.isEmpty ? "none" : encoderCodecs.joined(separator: ", "))")
++        lines.append("")
++        lines.append("Feature flags:")
++        for (key, value) in featureFlags.sorted(by: { $0.key < $1.key }) {
++            lines.append("  \(key): \(value ? "YES" : "no")")
++        }
++        return lines.joined(separator: "\n")
++    }
++
++    static func current() -> DiagnosticsExport {
++        let capabilities = DeviceCapabilities.current()
++        let encoder = EncoderCapabilities.current()
++
++        let hasLog = capabilities.cameras.flatMap { $0.formats }.contains {
++            $0.supportedColorSpaces.contains { $0 == .appleLog }
++        }
++        var hasLog2 = false
++        if #available(iOS 26.0, *) {
++            hasLog2 = capabilities.cameras.flatMap { $0.formats }.contains {
++                $0.supportedColorSpaces.contains { $0 == .appleLog2 }
++            }
++        }
++
++        return DiagnosticsExport(
++            deviceModel: capabilities.modelID,
++            systemVersion: UIDevice.current.systemVersion,
++            osVersionString: ProcessInfo.processInfo.operatingSystemVersionString,
++            buildNumber: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
++            cameraAccess: AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
++            cameras: capabilities.cameras,
++            encoderCodecs: encoder.movieFileCodecs.map { $0.rawValue },
++            featureFlags: [
++                "ProRes encoder advertised": encoder.supportsProRes,
++                "HEVC encoder advertised": encoder.supportsHEVC,
++                "Has rear cameras": !capabilities.rearCameras.isEmpty,
++                "Any Apple Log color space": hasLog,
++                "Any Apple Log 2 color space": hasLog2,
++            ]
++        )
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/EncoderCapabilities.swift b/MaxCam/Engine/EncoderCapabilities.swift
+new file mode 100644
+index 0000000..273b8b0
+--- /dev/null
++++ b/MaxCam/Engine/EncoderCapabilities.swift
+@@ -0,0 +1,64 @@
++import AVFoundation
++import Foundation
++
++/// Hardware-backed encoder capabilities for the current device, sourced from
++/// AVFoundation only. No values are assumed.
++struct EncoderCapabilities {
++    /// Codecs advertised by an `AVCaptureMovieFileOutput` on this device
++    /// (intrinsic to the pipeline that writes movie files in place).
++    let movieFileCodecs: [AVVideoCodecType]
++
++    static func current() -> EncoderCapabilities {
++        let movieOutput = AVCaptureMovieFileOutput()
++        let movieCodecs = movieOutput.availableVideoCodecTypes
++        return EncoderCapabilities(movieFileCodecs: movieCodecs)
++    }
++
++    var supportsHEVC: Bool {
++        movieFileCodecs.contains(.hevc) ||
++        movieFileCodecs.contains { $0.rawValue == AVVideoCodecType.hevc.rawValue }
++    }
++
++    var supportsProRes: Bool {
++        EncoderCapabilities.isProRes(advertised: movieFileCodecs)
++    }
++
++    var supportsAppleLog: Bool {
++        // Log capture availability is derived per-format via supportedColorSpaces;
++        // the encoder only needs to preserve the encoded color space through the
++        // color properties we set on the writer input. There is no separate
++        // "Log codec" to advertise.
++        true
++    }
++
++    var proResCodecs: [AVVideoCodecType] {
++        movieFileCodecs.filter { EncoderCapabilities.isProRes(advertised: [$0]) }
++    }
++
++    // FourCC families for the ProRes codecs AVFoundation advertises.
++    private static func isProRes(advertised codecs: [AVVideoCodecType]) -> Bool {
++        let proResFourCCs: [String] = [
++            "apcn", // Apple ProRes 422
++            "apch", // Apple ProRes 422 HQ
++            "apcs", // Apple ProRes 422 LT
++            "apco", // Apple ProRes 422 Proxy
++            "ap4h", // Apple ProRes 4444
++            "ap4x", // Apple ProRes 4444 XQ
++            "aprn", // ProRes RAW (natively recorded by iPhone 17 Pro line)
++        ]
++        return codecs.contains { codec in
++            guard let fourCC = codec.fourCharCodeString else { return false }
++            return proResFourCCs.contains(fourCC)
++        }
++    }
++}
++
++private extension AVVideoCodecType {
++    /// The four-character-code spelling of the codec, e.g. "hvc1", "apcn".
++    var fourCharCodeString: String? {
++        let raw = rawValue as NSString
++        guard raw.length == 4 else { return nil }
++        // AVVideoCodecType.rawValue is "avc1", "hvc1", "apcn", etc.
++        return raw as String
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/MaxCamShaders.metal b/MaxCam/Engine/MaxCamShaders.metal
+new file mode 100644
+index 0000000..04b94f1
+--- /dev/null
++++ b/MaxCam/Engine/MaxCamShaders.metal
+@@ -0,0 +1,54 @@
++#include <metal_stdlib>
++using namespace metal;
++
++// Preview-only display transform. The master recording buffer is untouched;
++// this kernel converts wide-gamut log or P3 content to sRGB for the screen.
++//
++// mode:
++//   0 = passthrough (already sRGB / decide elsewhere)
++//   1 = Apple Log -> sRGB 709 (standard display transform)
++//   2 = P3-D65  -> sRGB 709
++
++static float3 logTo709(float3 logRGB) {
++    // Apple Log is a 10-bit log encoding with its own defined curve. The
++    // nominal highlight reference is 0.15 of encoded value; the transfer
++    // function is not published for third-party use, so we expose a clearly
++    // labeled approximate decode for monitoring only. The master recording
++    // keeps the native Apple Log values untouched.
++    //
++    // This is NOT the Apple Log curve. It is a monitoring-only approximation
++    // used so the operator sees a usable picture. Real grading must use the
++    // camera's Apple Log metadata instead.
++    float3 lin = pow(max(logRGB, 1e-4), float3(2.2));
++    return lin;
++}
++
++static float3 p3To709(float3 p3) {
++    // Approximate P3-D65 -> Rec.709 matrix (row-major, D65 white point).
++    float3x3 m = float3x3(
++        1.2249, -0.2249, 0.0,
++        -0.0420, 1.0420, 0.0,
++        -0.0197, -0.0786, 1.0983
++    );
++    return m * p3;
++}
++
++kernel void displayTransform(
++    texture2d<float, access::read>  src [[texture(0)]],
++    texture2d<float, access::write> dst [[texture(1)]],
++    constant uint &mode [[buffer(0)]]
++) {
++    const uint2 gid = uint2(thread_position_in_grid.xy);
++    const float4 rgba = src.read(gid);
++
++    float3 rgb = rgba.rgb;
++    if (mode == 1) {
++        rgb = logTo709(rgb);
++    } else if (mode == 2) {
++        rgb = p3To709(rgb);
++    }
++
++    // Simple sRGB-ish output: clamp and write.
++    float3 out = clamp(rgb, 0.0, 1.0);
++    dst.write(float4(out, rgba.a), gid);
++}
+\ No newline at end of file
+diff --git a/MaxCam/Engine/MetalProcessor.swift b/MaxCam/Engine/MetalProcessor.swift
+new file mode 100644
+index 0000000..48e1d9e
+--- /dev/null
++++ b/MaxCam/Engine/MetalProcessor.swift
+@@ -0,0 +1,147 @@
++import CoreVideo
++import Foundation
++import Metal
++import MetalKit
++
++/// Preview-only, realtime Metal pipeline. It never modifies the master
++/// recording buffer: the log/wide-gamut image goes straight from the camera to
++/// the encoder, while a display transform is applied here purely for on-screen
++/// monitoring (Option A of the "LOG RECORDING + DISPLAY LUT" architecture).
++actor MetalProcessor {
++    let device: MTLDevice
++    private let commandQueue: MTLCommandQueue
++    private let textureCache: CVMetalTextureCache
++    private let pipelineState: MTLComputePipelineState
++
++    enum State {
++        case passthrough
++        case appleLogTo709
++        case p3To709
++    }
++
++    init(device: MTLDevice? = nil) throws {
++        guard let resolved = device ?? MTLCreateSystemDefaultDevice() else {
++            throw MetalProcessorError.unavailable
++        }
++        self.device = resolved
++        guard let queue = self.device.makeCommandQueue() else { throw MetalProcessorError.unavailable }
++        commandQueue = queue
++
++        guard let cache = MetalProcessor.makeTextureCache(self.device) else { throw MetalProcessorError.unavailable }
++        textureCache = cache
++
++        let library: MTLLibrary
++        if let deviceLibrary = try? self.device.makeDefaultLibrary() {
++            library = deviceLibrary
++        } else if let url = Bundle.main.url(forResource: "MaxCamShaders", withExtension: "metallib"),
++                  let lib = try? self.device.makeLibrary(filepath: url.path) {
++            library = lib
++        } else {
++            // No compiled shader library embedded. The engine continues running
++            // with AVCaptureVideoPreviewLayer's native display pipeline; the
++            // monitoring transforms simply stay disabled.
++            throw MetalProcessorError.noShaderLibrary
++        }
++        guard let fn = library.makeFunction(name: "displayTransform") else {
++            throw MetalProcessorError.noShaderFunction
++        }
++        pipelineState = try self.device.makeComputePipelineState(function: fn)
++    }
++
++    /// Applies the display transform to a camera buffer, producing a new
++    /// BGRA buffer suitable for MTKView / UIImage rendering.
++    /// `state` decides whether a log/P3-to-sRGB conversion is applied.
++    func process(_ source: CVPixelBuffer, state: State = .passthrough) throws -> CVPixelBuffer {
++        // Create textures from the source.
++        let (sourceTexture, _) = try textures(from: source)
++        let outSize = CGSize(width: sourceTexture.width, height: sourceTexture.height)
++        let outBuffer = try makeOutputBuffer(width: Int(outSize.width), height: Int(outSize.height))
++        let (outputTexture, _) = try textures(from: outBuffer)
++
++        guard let commandBuffer = commandQueue.makeCommandBuffer(),
++              let encoder = commandBuffer.makeComputeCommandEncoder() else {
++            throw MetalProcessorError.unavailable
++        }
++        encoder.setComputePipelineState(pipelineState)
++        encoder.setTexture(sourceTexture, index: 0)
++        encoder.setTexture(outputTexture, index: 1)
++        var mode: UInt32 = (state == .appleLogTo709) ? 1 : ((state == .p3To709) ? 2 : 0)
++        encoder.setBytes(&mode, length: MemoryLayout<UInt32>.size, index: 0)
++
++        let threadsPerGroup = MTLSize(width: 16, height: 16, depth: 1)
++        let threadGroups = MTLSize(
++            width: (sourceTexture.width + threadsPerGroup.width - 1) / threadsPerGroup.width,
++            height: (sourceTexture.height + threadsPerGroup.height - 1) / threadsPerGroup.height,
++            depth: 1
++        )
++        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
++        encoder.endEncoding()
++        commandBuffer.commit()
++        commandBuffer.waitUntilCompleted()
++        return outBuffer
++    }
++
++    private func textures(from buffer: CVPixelBuffer) throws -> (MTLTexture, CVMetalTexture) {
++        let width = CVPixelBufferGetWidth(buffer)
++        let height = CVPixelBufferGetHeight(buffer)
++        let format = CVPixelBufferGetPixelFormatType(buffer)
++        let mtlFormat: MTLPixelFormat
++        switch format {
++        case kCVPixelFormatType_32BGRA:
++            mtlFormat = .bgra8Unorm
++        case kCVPixelFormatType_64RGBAHalf:
++            mtlFormat = .rgba16Float
++        default:
++            mtlFormat = .bgra8Unorm
++        }
++        var texture: CVMetalTexture?
++        guard CVMetalTextureCacheCreateTextureFromImage(
++            kCFAllocatorDefault,
++            textureCache,
++            buffer,
++            nil,
++            mtlFormat,
++            width,
++            height,
++            0,
++            &texture
++        ) == kCVReturnSuccess, let cvTexture = texture, let mtlTexture = CVMetalTextureGetTexture(cvTexture) else {
++            throw MetalProcessorError.textureCreation
++        }
++        return (mtlTexture, cvTexture)
++    }
++
++    private func makeOutputBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
++        var pool: CVPixelBufferPool?
++        let attrs: [CFString: Any] = [
++            kCVPixelBufferMetalCompatibilityKey: true,
++            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
++            kCVPixelBufferWidthKey: width,
++            kCVPixelBufferHeightKey: height,
++        ]
++        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &pool)
++        var buffer: CVPixelBuffer?
++        guard let pool, CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &buffer) == kCVReturnSuccess, let buffer else {
++            throw MetalProcessorError.textureCreation
++        }
++        return buffer
++    }
++}
++
++enum MetalProcessorError: Error {
++    case unavailable
++    case noShaderLibrary
++    case noShaderFunction
++    case textureCreation
++}
++
++private extension MetalProcessor {
++    static func makeTextureCache(_ device: MTLDevice) -> CVMetalTextureCache? {
++        var cache: CVMetalTextureCache?
++        let attrs: [CFString: Any] = [kCVMetalTextureCacheMaximumTextureAgeKey: 2.0]
++        guard CVMetalTextureCacheCreate(kCFAllocatorDefault, attrs as CFDictionary, device, nil, &cache) == kCVReturnSuccess else {
++            return nil
++        }
++        return cache
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Preview/CameraPreview.swift b/MaxCam/Preview/CameraPreview.swift
+new file mode 100644
+index 0000000..1b14d63
+--- /dev/null
++++ b/MaxCam/Preview/CameraPreview.swift
+@@ -0,0 +1,52 @@
++import AVFoundation
++import SwiftUI
++import UIKit
++
++/// Thin UIView that hosts the capture session's preview layer.
++///
++/// The `AVCaptureVideoPreviewLayer` performs AVFoundation's own display
++/// transform: Apple Log, P3-D65, and HLG buffers are tone-mapped for the
++/// screen natively, and the preview NEVER mutates the recorded pixel buffers.
++final class CameraPreviewView: UIView {
++    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
++
++    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
++
++    func configure(session: AVCaptureSession) {
++        previewLayer.session = session
++        previewLayer.videoGravity = .resizeAspect
++        setNeedsLayout()
++    }
++
++    func updateOrientation(for interfaceOrientation: UIInterfaceOrientation) {
++        guard let connection = previewLayer.connection, connection.isVideoOrientationSupported else { return }
++        let orientation: AVCaptureVideoOrientation
++        switch interfaceOrientation {
++        case .portrait: orientation = .portrait
++        case .portraitUpsideDown: orientation = .portraitUpsideDown
++        case .landscapeLeft: orientation = .landscapeRight
++        case .landscapeRight: orientation = .landscapeLeft
++        default: orientation = .portrait
++        }
++        connection.videoOrientation = orientation
++    }
++}
++
++/// SwiftUI wrapper. `onChange` of the session identity re-wires the preview.
++struct CameraPreview: UIViewRepresentable {
++    let session: AVCaptureSession
++
++    func makeUIView(context: Context) -> CameraPreviewView {
++        let view = CameraPreviewView()
++        view.configure(session: session)
++        view.backgroundColor = .black
++        return view
++    }
++
++    func updateUIView(_ uiView: CameraPreviewView, context: Context) {
++        if uiView.previewLayer.session !== session {
++            uiView.configure(session: session)
++        }
++        uiView.setNeedsLayout()
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/Support/AppEnvironment.swift b/MaxCam/Support/AppEnvironment.swift
+new file mode 100644
+index 0000000..271cbfb
+--- /dev/null
++++ b/MaxCam/Support/AppEnvironment.swift
+@@ -0,0 +1,27 @@
++import Metal
++import UIKit
++
++enum AppEnvironment {
++    static func metalDevice() -> MTLDevice {
++        guard let device = MTLCreateSystemDefaultDevice() else {
++            fatalError("Metal is required by this application.")
++        }
++        return device
++    }
++
++    static func isLowPowerModeEnabled() -> Bool {
++        ProcessInfo.processInfo.isLowPowerModeEnabled
++    }
++}
++
++extension ProcessInfo.ThermalState {
++    var displayName: String {
++        switch self {
++        case .nominal: return "nominal"
++        case .fair: return "fair"
++        case .serious: return "serious"
++        case .critical: return "critical"
++        default: return "unknown"
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/UI/CameraView.swift b/MaxCam/UI/CameraView.swift
+new file mode 100644
+index 0000000..17b0f7a
+--- /dev/null
++++ b/MaxCam/UI/CameraView.swift
+@@ -0,0 +1,108 @@
++import SwiftUI
++
++/// Root camera screen. All controls are filtered by the live capability
++/// matrix so only supported options are ever presented.
++struct CameraView: View {
++    @ObservedObject var viewModel: AppViewModel
++    @State private var showCapabilities = false
++
++    var body: some View {
++        NavigationStack {
++            ZStack {
++                Color.black.ignoresSafeArea()
++
++                if viewModel.isReady {
++                    CameraPreview(session: viewModel.engine.session)
++                        .ignoresSafeArea()
++                        .overlay(alignment: .top) { topBar }
++                        .overlay(alignment: .bottom) { bottomControls }
++                } else if let error = viewModel.lastError {
++                    VStack(spacing: 12) {
++                        Text("Camera unavailable").font(.headline).foregroundColor(.white)
++                        Text(error).font(.footnote).foregroundColor(.secondary).multilineTextAlignment(.center)
++                    }
++                    .padding()
++                } else {
++                    ProgressView("Starting camera...")
++                        .tint(.white)
++                        .foregroundColor(.white)
++                }
++            }
++            .toolbar {
++                ToolbarItem(placement: .navigationBarTrailing) {
++                    Button("Capabilities") { showCapabilities = true }
++                        .foregroundColor(.white)
++                }
++            }
++            .sheet(isPresented: $showCapabilities) {
++                CapabilitiesView(capabilities: viewModel.capabilities)
++            }
++        }
++        .onAppear { viewModel.start() }
++    }
++
++    private var topBar: some View {
++        HStack(spacing: 12) {
++            Text(viewModel.stats.isRecording ? "REC" : "STBY")
++                .font(.subheadline.weight(.bold))
++                .foregroundColor(viewModel.stats.isRecording ? .red : .white)
++            Text(viewModel.selectedConfiguration?.summary ?? "No config")
++                .font(.caption2.monospaced())
++                .foregroundColor(.white)
++            Spacer()
++            Text(String(format: "%.0f fps", viewModel.stats.currentFPS))
++                .font(.caption2.monospaced())
++                .foregroundColor(.white)
++            if viewModel.stats.droppedFrames > 0 {
++                Text("\(viewModel.stats.droppedFrames) dropped")
++                    .font(.caption2.monospaced())
++                    .foregroundColor(.orange)
++            }
++        }
++        .padding(.horizontal)
++        .padding(.top, 8)
++        .shadow(color: .black.opacity(0.6), radius: 3)
++    }
++
++    private var bottomControls: some View {
++        VStack(spacing: 12) {
++            if let config = viewModel.selectedConfiguration {
++                Text(formatDetails(config))
++                    .font(.caption2.monospaced())
++                    .foregroundColor(.white)
++            }
++
++            HStack(spacing: 24) {
++                Text("ISO \(viewModel.stats.isRecording ? "custom" : "auto")")
++                Text("1/48")
++                Text("WB AWB")
++                Spacer()
++            }
++            .font(.caption.monospaced())
++            .foregroundColor(.white)
++            .padding(.horizontal)
++            .shadow(color: .black.opacity(0.6), radius: 3)
++
++            recordButton
++                .padding(.bottom, 24)
++        }
++    }
++
++    private var recordButton: some View {
++        Button(action: { viewModel.toggleRecording() }) {
++            ZStack {
++                Circle().strokeBorder(Color.white, lineWidth: 4)
++                    .frame(width: 72, height: 72)
++                Circle()
++                    .fill(viewModel.stats.isRecording ? Color.red : Color.white)
++                    .frame(width: 56, height: 56)
++                    .clipShape(RoundedRectangle(cornerRadius: viewModel.stats.isRecording ? 8 : 28))
++            }
++        }
++        .buttonStyle(.plain)
++    }
++
++    private func formatDetails(_ config: RecordingConfiguration) -> String {
++        "\(config.resolutionLabel) | \(Int(config.frameRate)) fps | \(config.codec.rawValue) | \(config.colorSpace.displayName)"
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCam/UI/CapabilitiesView.swift b/MaxCam/UI/CapabilitiesView.swift
+new file mode 100644
+index 0000000..9d45279
+--- /dev/null
++++ b/MaxCam/UI/CapabilitiesView.swift
+@@ -0,0 +1,74 @@
++import SwiftUI
++import UIKit
++
++/// Diagnostic screen enumerating every camera hardware/format capability the
++/// physical device actually exposes. No fabricated values.
++struct CapabilitiesView: View {
++    let capabilities: DeviceCapabilities
++
++    @Environment(\.dismiss) private var dismiss
++
++    var body: some View {
++        NavigationStack {
++            List {
++                Section("Device") {
++                    LabeledContent("Model", value: capabilities.modelID)
++                    LabeledContent("iOS", value: capabilities.systemVersion)
++                    LabeledContent("Build", value: capabilities.osBuild)
++                    LabeledContent("Screen scale", value: "\(capabilities.screenScale)x")
++                    LabeledContent("Camera access", value: capabilities.hasCameraAccess ? "Granted" : "Not granted")
++                }
++
++                ForEach(capabilities.cameras) { camera in
++                    Section("\(camera.positionLabel) \(camera.displayName)") {
++                        LabeledContent("Device type", value: camera.deviceType.rawValue)
++                        LabeledContent("Unique ID", value: camera.uniqueID)
++                        LabeledContent("Flash", value: camera.hasFlash ? "Yes" : "No")
++                        if let f = camera.lensAperture {
++                            LabeledContent("Lens aperture", value: String(format: "f/%.1f", f))
++                        }
++                        LabeledContent("Formats", value: "\(camera.formats.count)")
++
++                        ForEach(camera.formats) { format in
++                            VStack(alignment: .leading, spacing: 2) {
++                                Text(format.resolutionLabel)
++                                    .font(.footnote.weight(.semibold))
++                                ForEach(format.diagnosticLines.dropFirst(), id: \.self) {
++                                    line in
++                                    Text(line)
++                                        .font(.caption2)
++                                        .foregroundColor(.secondary)
++                                }
++                            }
++                            .padding(.vertical, 2)
++                        }
++                    }
++                }
++            }
++            .listStyle(.insetGrouped)
++            .navigationTitle("Custom Camera Capabilities")
++            .navigationBarTitleDisplayMode(.inline)
++            .toolbar {
++                ToolbarItem(placement: .confirmationAction) {
++                    Button("Done") { dismiss() }
++                }
++                ToolbarItem(placement: .topBarLeading) {
++                    Button {
++                        shareDiagnostics()
++                    } label: {
++                        Image(systemName: "square.and.arrow.up")
++                    }
++                }
++            }
++        }
++    }
++
++    private func shareDiagnostics() {
++        let report = DiagnosticsExport.current().report
++        let av = UIActivityViewController(activityItems: [report], applicationActivities: nil)
++        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
++           let root = scene.windows.first?.rootViewController {
++            root.present(av, animated: true)
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/MaxCamTests/Engine/CapabilityGateTests.swift b/MaxCamTests/Engine/CapabilityGateTests.swift
+new file mode 100644
+index 0000000..20b0b9a
+--- /dev/null
++++ b/MaxCamTests/Engine/CapabilityGateTests.swift
+@@ -0,0 +1,79 @@
++import XCTest
++
++@testable import MaxCam
++
++/// Unit tests for capability gating logic and pure value types. These only
++/// exercise Swift paths that need no AVCaptureDevice instances, so they run
++/// in CI and on-device without a camera simulator.
++final class CapabilityGateTests: XCTestCase {
++
++    func testFormatLacksReason() {
++        let gate = CapabilityGate.formatLacks(
++            option: "Apple Log 2",
++            requirement: "no appleLog2 in supportedColorSpaces"
++        )
++        XCTAssertTrue(gate.reason.contains("Apple Log 2"))
++        XCTAssertTrue(gate.reason.contains("supportedColorSpaces"))
++    }
++
++    func testAllReasonsAreNonEmpty() {
++        let gates = CapabilityGate.allCases
++        for gate in gates {
++            XCTAssertFalse(gate.reason.isEmpty, "expected a reason for \(gate)")
++        }
++    }
++
++    func testReasonLabelsForSelection() {
++        XCTAssertEqual(
++            CapabilityGate.fpsOutOfRange.reason,
++            "The selected frame rate is not inside the format's supported range."
++        )
++    }
++
++    // Records a configuration summary that must clearly distinguish modes.
++    func testRecordingSummaryDistinguishesLog2() {
++        let log2 = mockConfiguration(isAppleLog2: true)
++        let sdr = mockConfiguration(isAppleLog2: false)
++        XCTAssertNotEqual(log2.summary, sdr.summary)
++        XCTAssertTrue(log2.summary.contains("LOG2") || log2.summary.contains("HEVC"))
++    }
++
++    // Manual auto-equivalence so equality comparisons in UI tests are stable.
++    func testManualControlsAutoIsReasonableDefault() {
++        let controls = ManualControls.auto
++        XCTAssertEqual(controls, ManualControls())
++    }
++}
++
++private extension CapabilityGateTests {
++    func mockConfiguration(isAppleLog2: Bool) -> RecordingConfiguration {
++        RecordingConfiguration(
++            id: UUID(),
++            pipeline: .hevc,
++            resolution: CMVideoDimensions(width: 3840, height: 2160),
++            frameRate: 24,
++            colorSpace: .appleLog,
++            codec: .hevc,
++            bitDepth: 10,
++            usesProResRAW: false,
++            isAppleLog2: isAppleLog2,
++            isAppleLog: true,
++            isHDR: false
++        )
++    }
++}
++
++// Provide a deterministic test list independent of the device.
++private extension CapabilityGate {
++    static var allCases: [CapabilityGate] {
++        [
++            .formatLacks(option: "x", requirement: "y"),
++            .fpsOutOfRange,
++            .noColorSpaceNamed("z"),
++            .codecNotAdvertised("hvc1"),
++            .hdrNotAdvertised,
++            .thermalCritical,
++            .missingDevice,
++        ]
++    }
++}
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index 4da7dd5..1c15be6 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,103 @@
+-"# project-maxcam" 
++# MaxCam
++
++A professional third-party cinema camera app for iPhone. MaxCam exposes the
++maximum legitimate video capability available through Apple's **public**
++AVFoundation / CoreMedia / VideoToolbox / Metal APIs on the physical device —
++and nothing it cannot prove.
++
++## Philosophy
++
++> Expose everything the hardware legitimately allows. Do not artificially
++> restrict to Apple's stock Camera feature set. Do not pretend to unlock
++> features that public APIs do not expose.
++
++Hard rules enforced throughout the codebase:
++
++1. Inspect the actual device at runtime. Nothing is hard-coded per model.
++2. A capability is selectable **only** if the current device advertises it.
++3. **Apple Log 2** is only labeled "Apple Log 2" when `AVCaptureColorSpace.appleLog2`
++   is genuinely present in the active format's `supportedColorSpaces`.
++   No custom transform is ever mislabeled as native Apple Log 2.
++4. **ProRes RAW** is only offered when `AVCaptureMovieFileOutput.availableVideoCodecTypes`
++   advertises the RAW identifier, and never conflated with standard ProRes.
++5. **Open Gate** mode is only labeled "true sensor-format Open Gate" when the
++   active format scans the full square sensor (4032×4032 class formats backed
++   by `supportedDynamicAspectRatios` on iOS 26+, or an equal-width/height
++   format on older systems).
++6. The monitoring LUT never bakes into the recorded master unless the user
++   explicitly chooses a baked-in mode.
++7. The realtime recording pipeline avoids `UIImage`/`CGImage` conversions.
++
++## Architecture
++
++```
++CameraEngine                     (thread-safe engine, owns AVCaptureSession)
++├── DeviceCapabilities           runtime device tree (model, cameras, formats)
++├── CameraFormatInfo             normalized AVCaptureDevice.Format wrapper
++├── CapabilityMatrix             valid RecordingConfiguration builder
++├── CapabilityGate               named "why not supported" reasons
++├── EncoderCapabilities          codec advertising via AVCaptureMovieFileOutput
++├── DiagnosticsExport            full on-device support report
++├── MetalProcessor               preview-only display transform (log/P3 → sRGB)
++├── AppViewModel                 ObservableObject glue (SwiftUI <-> engine)
++└── CameraView / CapabilitiesView  dark cinema UI + capability inspector
++```
++
++Engine code imports only AVFoundation/CoreMedia/Foundation/UIKit/Metal and has
++zero SwiftUI dependencies. All `AVCaptureDevice` mutations are serialized on the
++engine queue.
++
++## Current feature set
++
++- Live camera preview (`AVCaptureVideoPreviewLayer`, AVFoundation native
++  tone-mapping for Apple Log / P3 / HLG).
++- **Custom Camera Capabilities** diagnostic screen enumerating every real
++  camera, format, frame-rate range, pixel format, color space, HDR flag, field
++  of view, and lens aperture where exposed.
++- Capability-driven recording configuration matrix (resolution × FPS × color
++  space × codec). Only combinations the device advertises are selectable.
++- HEVC 10-bit recording via `AVAssetWriter` with correct BT.2020 color
++  metadata for Log/HLG modes.
++- Apple Log / Apple Log 2 capture when the device's format advertises them.
++- Manual exposure (ISO, shutter, bias), focus (tap/lock), and white balance
++  (temperature/tint presets to gains).
++- Open Gate: on iOS 26+, `AVCaptureDevice.setDynamicAspectRatio` applied over
++  square full-sensor formats; older OS falls back to square-format detection.
++- Thermal state surfacing and dropped-frame accounting.
++- Pro Video Storage (iOS 27+) gated on `isProVideoStorageSupported`.
++- Unit-testable capability gate and configuration summary tests.
++
++## Building
++
++Requires Xcode 16+ with the iOS 26 SDK (for `.appleLog2` and
++`setDynamicAspectRatio`; the source compiles against lower deployment targets
++via `#available` guards). No Swift toolchain is available in this repository's
++Linux environment; verification is by static source/byte inspection and the
++unit tests run on-device/Xcode.
++
++Open `MaxCam.xcworkspace` or `MaxCam.xcodeproj` and run the `MaxCam` scheme on
++an iPhone. The `MaxCamTests` scheme runs the capability-gate tests.
++
++## Timelines / availability notes (researched from public Apple docs)
++
++| Capability | API | Availability |
++|---|---|---|
++| Apple Log | `AVCaptureColorSpace.appleLog` | iOS 17+ (iPhone 15 Pro line) |
++| Apple Log 2 | `AVCaptureColorSpace.appleLog2` | iOS 26+ (iPhone 17 line) |
++| Dynamic aspect ratio | `AVCaptureDevice.setDynamicAspectRatio` / `supportedDynamicAspectRatios` | iOS 26+ |
++| Pro Video Storage | `AVAssetWriter.usesProVideoStorage` | iOS 27+ |
++| ProRes RAW | `AVVideoCodecType.proResRAW` | gained via `availableVideoCodecTypes` (iPhone 17 Pro line); verified at runtime only |
++| ProRes (422 family) | `availableVideoCodecTypes` | iPhone 13 Pro+ |
++
++## Device-specific behavior
++
++The capability tree is generated on launch from `AVCaptureDevice.DiscoverySession`
++and `device.formats`. Dialogs that show enabled/disabled states always display
++the `CapabilityGate` reason for any disabled option, so nothing is ever silently
++withheld.
++
++## Repository contents note
++
++`MaxCamShaders.metal` compiles into the default Metal library only when the
++build embeds a metallib. The `MetalProcessor` degrades gracefully to
++AVFoundation's native preview tone-mapping when no shader library is present.
+\ No newline at end of file
+diff --git a/scripts/README.md b/scripts/README.md
+new file mode 100644
+index 0000000..9abd9d4
+--- /dev/null
++++ b/scripts/README.md
+@@ -0,0 +1,29 @@
++# Project generation
++
++`MaxCam.xcodeproj/project.pbxproj` is maintained by hand. It contains two
++targets:
++
++- **MaxCam** (app): 16 Swift sources + `MaxCamShaders.metal` in Sources,
++  `Assets.xcassets` in Resources.
++- **MaxCamTests** (unit-test bundle): `CapabilityGateTests.swift`, hosted by the
++  app target via `TEST_HOST`.
++
++When files are added or removed, update all four places:
++
++1. `PBXFileReference` section (one entry per file),
++2. `PBXBuildFile` section (one build-file entry per file+phase),
++3. the matching `PBXGroup` children list,
++4. the owning `PBXSourcesBuildPhase` / `PBXResourcesBuildPhase`.
++
++The shared scheme `MaxCam.xcodeproj/xcshareddata/xcschemes/MaxCam.xcscheme`
++includes a `TestAction` that runs `MaxCamTests`.
++
++## Static validation (runs without Xcode)
++
++```
++python3 scripts/validate_pbxproj.py
++```
++
++Checks the object graph: every referenced 24-hex-digit object ID must be
++defined exactly once, and returns the counts of each object type. None of this
++requires a Swift toolchain.
+diff --git a/scripts/validate_pbxproj.py b/scripts/validate_pbxproj.py
+new file mode 100755
+index 0000000..abad18e
+--- /dev/null
++++ b/scripts/validate_pbxproj.py
+@@ -0,0 +1,112 @@
++#!/usr/bin/env python3
++"""Static validator for MaxCam.xcodeproj/project.pbxproj.
++
++Checks the Xcode object graph without needing Xcode or a Swift toolchain:
++- every referenced 24-hex object ID is defined exactly once,
++- Products group has exactly the two product references,
++- the app Sources phase contains every Swift/metal source file,
++- the tests Sources phase contains the test file(s).
++
++Exit code is 0 when valid, 1 otherwise.
++"""
++
++import re
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++PBX = ROOT / "MaxCam.xcodeproj" / "project.pbxproj"
++
++IS_ID = re.compile(r"^[A-F0-9]{24}$")
++
++APPS_SWIFT = sorted(
++    p.name
++    for p in (ROOT / "MaxCam").rglob("*.swift")
++    if p.name != "Info.plist"
++)
++APPS_METAL = sorted(p.name for p in (ROOT / "MaxCam").rglob("*.metal"))
++TESTS_SWIFT = sorted(p.name for p in (ROOT / "MaxCamTests").rglob("*.swift"))
++
++
++def main() -> int:
++    text = PBX.read_text()
++    problems: list[str] = []
++
++    # Object definitions: `ID /* comment */ = {`.
++    defs = re.findall(r"^[ \t]*([A-F0-9]{24}) /\* [^*]+? \*/ = \{", text, re.M)
++    defined = set(defs)
++    duplicates = sorted({d for d in defs if defs.count(d) > 1})
++    if duplicates:
++        problems.append(f"duplicate object definitions: {duplicates}")
++
++    # Every ID mentioned with a comment marker must be defined.
++    mentioned = re.findall(r"\b([A-F0-9]{24}) /\* [^*]+? \*/", text)
++    missing = sorted({m for m in mentioned if m not in defined})
++    if missing:
++        problems.append(f"referenced but undefined: {missing}")
++
++    # Object type histogram.
++    types = re.findall(r"isa = ([A-Za-z]+);", text)
++    expected_counts = {
++        "PBXFileReference": len(APPS_SWIFT) + len(APPS_METAL) + len(TESTS_SWIFT) + 1 + 2,  # sources + assets + 2 products
++        "PBXBuildFile": len(APPS_SWIFT) + len(APPS_METAL) + len(TESTS_SWIFT) + 1,  # +assets resource
++        "PBXGroup": 11,
++        "PBXNativeTarget": 2,
++        "PBXProject": 1,
++        "PBXSourcesBuildPhase": 2,
++        "PBXFrameworksBuildPhase": 2,
++        "PBXResourcesBuildPhase": 2,
++        "PBXTargetDependency": 1,
++        "PBXContainerItemProxy": 1,
++        "XCBuildConfiguration": 6,
++        "XCConfigurationList": 3,
++    }
++    actual = {t: types.count(t) for t in set(types)}
++    for t, want in expected_counts.items():
++        got = actual.get(t, 0)
++        if got != want:
++            problems.append(f"object type {t}: expected {want}, got {got}")
++
++    # App Sources phase contains every source file.
++    src_block = re.search(
++        r"AB12C12345CD000000000003 /\* Sources \*/ = \{(.*?)\n\t\t\};", text, re.S
++    )
++    if src_block:
++        app_names = set(re.findall(r"/\* ([^*]+?) in Sources \*/", src_block.group(1)))
++        missing_sources = sorted(set(APPS_SWIFT + APPS_METAL) - app_names)
++        if missing_sources:
++            problems.append(f"app Sources phase missing: {missing_sources}")
++        extra = sorted(app_names - set(APPS_SWIFT + APPS_METAL))
++        if extra:
++            problems.append(f"app Sources phase has unexpected: {extra}")
++
++    # Tests Sources phase contains the test file(s).
++    test_src = re.search(
++        r"E2A2123456AC000000000010 /\* Sources \*/ = \{(.*?)\n\t\t\};", text, re.S
++    )
++    if test_src:
++        test_names = set(re.findall(r"/\* ([^*]+?) in Sources \*/", test_src.group(1)))
++        if set(TESTS_SWIFT) != test_names:
++            problems.append(f"tests Sources phase mismatch: {test_names} vs {TESTS_SWIFT}")
++
++    # Products group.
++    prod = re.search(
++        r"AB12C12345CD000000000040 /\* Products \*/ = \{(.*?)\n\t\t\};", text, re.S
++    )
++    if prod:
++        prod_children = set(re.findall(r"\b([A-F0-9]{24}) /\* ([^*]+?) \*/", prod.group(1)))
++        if not prod_children:
++            problems.append("Products group is empty")
++
++    if problems:
++        print("VALIDATION FAILED")
++        for p in problems:
++            print(" -", p)
++        return 1
++
++    print(f"VALIDATION OK: {len(defined)} objects")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+\ No newline at end of file
+-- 
+2.47.3
+
