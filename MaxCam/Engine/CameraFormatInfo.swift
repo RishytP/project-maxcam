@@ -1,13 +1,16 @@
 import AVFoundation
+import CoreMedia
 import Foundation
 
-/// A device-agnostic description of a single `AVCaptureDevice.Format`,
-/// normalizing every capability the public AVFoundation APIs expose for display.
+/// A device-agnostic, read-only snapshot of a single `AVCaptureDevice.Format`.
 ///
-/// Wraps a non-Sendable `AVCaptureDevice.Format` for read-only actor-safe
-/// snapshotting; never mutated after construction.
+/// `AVCaptureDevice.Format` is not `Sendable`, so the engine snapshots every
+/// value it needs at discovery time and keeps the framework object itself only
+/// for the moment the format is applied to a device. Nothing here is inferred:
+/// each field is read from AVFoundation.
 struct CameraFormatInfo: Identifiable, @unchecked Sendable {
     let format: AVCaptureDevice.Format
+    let deviceUniqueID: String
     let dimensions: CMVideoDimensions
     let mediaSubType: OSType
     let minFrameRate: Double
@@ -15,43 +18,61 @@ struct CameraFormatInfo: Identifiable, @unchecked Sendable {
     let fieldOfView: Double
     let isVideoHDRSupported: Bool
     let isGlobalToneMappingSupported: Bool
-    let lensAperture: Float?
     let supportedColorSpaces: [AVCaptureColorSpace]
-    let supportsDynamicAspectRatios: Bool
     let dynamicAspectRatioLabels: [String]
+    /// True only when the format scans a full square sensor area.
+    let isSquareSensorScan: Bool
 
-    init(format: AVCaptureDevice.Format) {
+    init(format: AVCaptureDevice.Format, deviceUniqueID: String) {
         self.format = format
-        let desc = format.formatDescription
-        self.dimensions = CMVideoFormatDescriptionGetDimensions(desc)
-        self.mediaSubType = CMFormatDescriptionGetMediaSubType(desc as! CMFormatDescription)
-        self.minFrameRate = format.videoSupportedFrameRateRanges.map { $0.minFrameRate }.min() ?? 0
-        self.maxFrameRate = format.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
-        self.fieldOfView = format.videoFieldOfView
-        if #available(iOS 17.0, *) {
-            self.isVideoHDRSupported = format.isVideoHDRSupported
-            self.isGlobalToneMappingSupported = format.isGlobalToneMappingSupported
-            self.lensAperture = format.lensAperture
-        } else {
-            self.isVideoHDRSupported = false
-            self.isGlobalToneMappingSupported = false
-            self.lensAperture = nil
-        }
-        self.supportedColorSpaces = Array(format.supportedColorSpaces)
-        // Dynamic aspect ratio is an iOS 26 API. We store only availability-safe
-        // derived values so this type compiles against the iOS 17 deployment
-        // target; the SDK types are only touched inside the #available branch.
-        if #available(iOS 26.0, *) {
-            self.supportsDynamicAspectRatios = !format.supportedDynamicAspectRatios.isEmpty
-            self.dynamicAspectRatioLabels = format.supportedDynamicAspectRatios.map(Self.aspectRatioLabel)
-        } else {
-            self.supportsDynamicAspectRatios = false
-            self.dynamicAspectRatioLabels = []
+        self.deviceUniqueID = deviceUniqueID
+
+        let description = format.formatDescription
+        self.dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        self.mediaSubType = CMFormatDescriptionGetMediaSubType(description)
+
+        let ranges = format.videoSupportedFrameRateRanges
+        self.minFrameRate = ranges.map(\.minFrameRate).min() ?? 0
+        self.maxFrameRate = ranges.map(\.maxFrameRate).max() ?? 0
+        self.fieldOfView = Double(format.videoFieldOfView)
+        self.isVideoHDRSupported = format.isVideoHDRSupported
+        self.isGlobalToneMappingSupported = format.isGlobalToneMappingSupported
+        self.supportedColorSpaces = format.supportedColorSpaces
+
+        let width = CMVideoFormatDescriptionGetDimensions(description).width
+        let height = CMVideoFormatDescriptionGetDimensions(description).height
+        self.isSquareSensorScan = width == height
+
+        // Dynamic aspect ratio is iOS 26-only, and the SDK type
+        // `AVCaptureDevice.AspectRatio` cannot be named at all from a lower
+        // deployment target, so the whole probe lives inside an `@available`
+        // helper that older systems never call.
+        self.dynamicAspectRatioLabels = CameraFormatInfo.dynamicAspectRatioLabels(for: format)
+    }
+
+    @available(iOS 26.0, *)
+    private static func labelsForDynamicAspectRatios(
+        _ ratios: [AVCaptureDevice.AspectRatio]
+    ) -> [String] {
+        // `AspectRatio` imports as a raw-representable struct, not an enum, so
+        // it is matched with `==` rather than a switch.
+        ratios.map { ratio in
+            if ratio == .ratio16x9 { return "16:9" }
+            if ratio == .ratio4x3 { return "4:3" }
+            if ratio == .ratio1x1 { return "1:1" }
+            if ratio == .ratio9x16 { return "9:16" }
+            if ratio == .ratio3x4 { return "3:4" }
+            return ratio.rawValue
         }
     }
 
+    private static func dynamicAspectRatioLabels(for format: AVCaptureDevice.Format) -> [String] {
+        guard #available(iOS 26.0, *) else { return [] }
+        return labelsForDynamicAspectRatios(format.supportedDynamicAspectRatios)
+    }
+
     var id: String {
-        "\(dimensions.width)x\(dimensions.height)-\(fourCCString(mediaSubType))-\(Int(maxFrameRate))"
+        "\(deviceUniqueID)|\(dimensions.width)x\(dimensions.height)|\(mediaSubTypeLabel)|\(Int(maxFrameRate))"
     }
 
     var resolutionLabel: String {
@@ -65,57 +86,58 @@ struct CameraFormatInfo: Identifiable, @unchecked Sendable {
     }
 
     var mediaSubTypeLabel: String {
-        fourCCString(mediaSubType)
+        Self.fourCCString(mediaSubType)
+    }
+
+    var supportsDynamicAspectRatios: Bool {
+        !dynamicAspectRatioLabels.isEmpty
+    }
+
+    /// Reported as true sensor-format Open Gate only when the format scans a
+    /// square sensor area. Everything else is a conventional crop.
+    var isOpenGateCapable: Bool {
+        isSquareSensorScan
     }
 
     var isWideColor: Bool {
         supportedColorSpaces.contains { $0 == .p3D65 }
-            || mediaSubType & 0xFFFFFF00 == 0x62363400
     }
 
+    var supportsAppleLog: Bool {
+        supportedColorSpaces.contains { $0 == .appleLog }
+    }
+
+    var supportsAppleLog2: Bool {
+        guard #available(iOS 26.0, *) else { return false }
+        return supportedColorSpaces.contains { $0 == .appleLog2 }
+    }
+
+    /// Bit depth inferred from the format's four-character pixel format code.
+    /// This describes the *sensor output* format, not the encoder bit depth,
+    /// which is selected separately.
     var bitDepthGuess: Int? {
         switch mediaSubType {
         case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
-             kCVPixelFormatType_420YpCbCr10BiPlanarFullRange:
-            return 10
-        case kCVPixelFormatType_420YpCbCr10v210BiPlanarVideoRange,
-             kCVPixelFormatType_420YpCbCr10v210BiPlanarFullRange:
+             kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
+             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarVideoRange,
+             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarFullRange:
             return 10
         case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
              kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange,
+             kCVPixelFormatType_422YpCbCr8BiPlanarFullRange,
              kCVPixelFormatType_32BGRA,
              kCVPixelFormatType_32ARGB:
             return 8
-        case kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarVideoRange,
-             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarFullRange,
-             kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarVideoRange,
-             kCVPixelFormatType_Lossless_420YpCbCr10PackedBiPlanarFullRange:
-            return 10
         default:
             return nil
         }
     }
 
     var colorSpaceLabels: [String] {
-        supportedColorSpaces.map { $0.displayName }
-    }
-
-    var aspectRatioLabels: [String] {
-        dynamicAspectRatioLabels
-    }
-
-    /// Named helper for the iOS 26 aspect-ratio SDK type; referenced only from
-    /// inside an `#available(iOS 26.0, *)` branch.
-    @available(iOS 26.0, *)
-    private static func aspectRatioLabel(_ ratio: AVCaptureDevice.AspectRatio) -> String {
-        switch ratio {
-        case .ratio16x9: return "16:9"
-        case .ratio4x3: return "4:3"
-        case .ratio1x1: return "1:1"
-        case .ratio9x16: return "9:16"
-        case .ratio3x4: return "3:4"
-        default: return "ratio"
-        }
+        supportedColorSpaces.map(\.displayName)
     }
 
     var diagnosticLines: [String] {
@@ -123,23 +145,31 @@ struct CameraFormatInfo: Identifiable, @unchecked Sendable {
             "Format: \(resolutionLabel)",
             "Media subtype: \(mediaSubTypeLabel) (\(String(format: "0x%08X", mediaSubType)))",
             "FPS: \(frameRateLabel)",
-            "FOV: \(String(format: "%.1f", fieldOfView))",
+            "FOV: \(String(format: "%.1f", fieldOfView)) deg",
             "Video HDR: \(isVideoHDRSupported ? "YES" : "no")",
             "Global tone mapping: \(isGlobalToneMappingSupported ? "YES" : "no")",
+            "Bit depth (fourCC): \(bitDepthGuess.map { "\($0)-bit" } ?? "unknown")",
+            "Color spaces: \(colorSpaceLabels.isEmpty ? "-" : colorSpaceLabels.joined(separator: ", "))",
+            "Open Gate (square sensor scan): \(isOpenGateCapable ? "YES" : "no")",
         ]
-        if let aperture = lensAperture {
-            lines.append("Lens aperture: f/\(String(format: "%.1f", aperture)))")
-        }
-        if let depth = bitDepthGuess {
-            lines.append("Bit depth (fourCC guess): \(depth)-bit")
-        } else {
-            lines.append("Bit depth (fourCC guess): unknown")
-        }
-        lines.append("Color spaces: \(colorSpaceLabels.isEmpty ? "-" : colorSpaceLabels.joined(separator: ", ")))")
         if !dynamicAspectRatioLabels.isEmpty {
-            lines.append("Dynamic aspect ratios: \(dynamicAspectRatioLabels.joined(separator: ", ")))")
+            lines.append("Dynamic aspect ratios: \(dynamicAspectRatioLabels.joined(separator: ", "))")
         }
         return lines
+    }
+
+    /// Converts a CoreMedia four-character code to its printable spelling.
+    static func fourCCString(_ code: OSType) -> String {
+        let bytes: [UInt8] = [
+            UInt8((code >> 24) & 0xFF),
+            UInt8((code >> 16) & 0xFF),
+            UInt8((code >> 8) & 0xFF),
+            UInt8(code & 0xFF),
+        ]
+        guard bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) else {
+            return String(format: "0x%08X", code)
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 }
 
@@ -151,20 +181,10 @@ extension AVCaptureColorSpace {
         case .appleLog: return "Apple Log"
         case .hlgBT2020: return "HLG BT.2020"
         default:
-            if #available(iOS 26.0, *) {
-                if self == .appleLog2 { return "Apple Log 2" }
+            if #available(iOS 26.0, *), self == .appleLog2 {
+                return "Apple Log 2"
             }
             return "raw \(rawValue)"
         }
     }
-}
-
-private func fourCCString(_ code: OSType) -> String {
-    let bytes: [UInt8] = [
-        UInt8((code >> 24) & 0xFF),
-        UInt8((code >> 16) & 0xFF),
-        UInt8((code >> 8) & 0xFF),
-        UInt8(code & 0xFF),
-    ]
-    return String(bytes: bytes, encoding: .ascii) ?? String(format: "0x%08X", code)
 }

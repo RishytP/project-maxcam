@@ -24,6 +24,7 @@
 		AB12C12345CD000000000221 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000231 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000232 /* CapabilitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilitiesView.swift; sourceTree = "<group>"; };
+		AB12C12345CD000000000233 /* FormatPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatPickerView.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000241 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		E2A2123456AC000000000002 /* CapabilityGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGateTests.swift; sourceTree = "<group>"; };
 		E2A2123456AC000000000001 /* MaxCamTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MaxCamTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -36,18 +37,19 @@
 		AB12C12345CD000000000262 /* CapabilityMatrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000214 /* CapabilityMatrix.swift */; };
 		AB12C12345CD000000000263 /* CapabilityGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A2123456AC000000000002 /* CapabilityGateTests.swift */; };
 		AB12C12345CD000000000264 /* DiagnosticsExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000219 /* DiagnosticsExport.swift */; };
-		AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000301 /* MaxCamApp.swift */; };
-		AB12C12345CD000000000302 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000302 /* AppViewModel.swift */; };
-		AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000312 /* CameraFormatInfo.swift */; };
-		AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000313 /* DeviceCapabilities.swift */; };
-		AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000315 /* CameraEngineError.swift */; };
-		AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000316 /* EncoderCapabilities.swift */; };
-		AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000317 /* CapabilityGate.swift */; };
-		AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000318 /* MetalProcessor.swift */; };
-		AB12C12345CD000000000321 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000321 /* CameraPreview.swift */; };
-		AB12C12345CD000000000331 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000331 /* CameraView.swift */; };
-		AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000332 /* CapabilitiesView.swift */; };
-		AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000341 /* AppEnvironment.swift */; };
+		AB12C12345CD000000000301 /* MaxCamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000201 /* MaxCamApp.swift */; };
+		AB12C12345CD000000000302 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000202 /* AppViewModel.swift */; };
+		AB12C12345CD000000000312 /* CameraFormatInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000212 /* CameraFormatInfo.swift */; };
+		AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000213 /* DeviceCapabilities.swift */; };
+		AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000215 /* CameraEngineError.swift */; };
+		AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000216 /* EncoderCapabilities.swift */; };
+		AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000217 /* CapabilityGate.swift */; };
+		AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000218 /* MetalProcessor.swift */; };
+		AB12C12345CD000000000321 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000221 /* CameraPreview.swift */; };
+		AB12C12345CD000000000331 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000231 /* CameraView.swift */; };
+		AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000232 /* CapabilitiesView.swift */; };
+		AB12C12345CD000000000333 /* FormatPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000233 /* FormatPickerView.swift */; };
+		AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000241 /* AppEnvironment.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXGroup section */
@@ -128,6 +130,7 @@
 			children = (
 				AB12C12345CD000000000231 /* CameraView.swift */,
 				AB12C12345CD000000000232 /* CapabilitiesView.swift */,
+				AB12C12345CD000000000233 /* FormatPickerView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -270,6 +273,7 @@
 				AB12C12345CD000000000321 /* CameraPreview.swift in Sources */,
 				AB12C12345CD000000000331 /* CameraView.swift in Sources */,
 				AB12C12345CD000000000332 /* CapabilitiesView.swift in Sources */,
+				AB12C12345CD000000000333 /* FormatPickerView.swift in Sources */,
 				AB12C12345CD000000000341 /* AppEnvironment.swift in Sources */,
 				AB12C12345CD000000000253 /* MaxCamShaders.metal in Sources */,
 			);

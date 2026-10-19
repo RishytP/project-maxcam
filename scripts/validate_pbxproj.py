@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Static validator for MaxCam.xcodeproj/project.pbxproj.
 
-Checks the Xcode object graph without needing Xcode or a Swift toolchain:
-- every referenced 24-hex object ID is defined exactly once,
-- Products group has exactly the two product references,
-- the app Sources phase contains every Swift/metal source file,
-- the tests Sources phase contains the test file(s).
+Checks the Xcode object graph without needing Xcode or a Swift toolchain, so CI
+can fail fast on a broken project file:
+
+- every referenced 24-hex object ID is defined,
+- no object ID is defined twice,
+- every PBXBuildFile points at a PBXFileReference (not at itself, not at
+  another PBXBuildFile) and its filename comment matches the target,
+- every source file on disk is in the owning Sources phase,
+- no Sources phase entry refers to a file that no longer exists,
+- the Products group holds exactly the two product references,
+- rootObject resolves to the PBXProject.
 
 Exit code is 0 when valid, 1 otherwise.
 """
@@ -17,94 +23,135 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PBX = ROOT / "MaxCam.xcodeproj" / "project.pbxproj"
 
-IS_ID = re.compile(r"^[A-F0-9]{24}$")
-
-APPS_SWIFT = sorted(
-    p.name
-    for p in (ROOT / "MaxCam").rglob("*.swift")
-    if p.name != "Info.plist"
+ID = r"[A-F0-9]{24}"
+# Object definitions live at exactly two tabs of indentation inside `objects`.
+# Anchoring to that depth keeps nested dictionaries (for example the
+# `TargetAttributes` entries, which repeat a target ID) from being mistaken for
+# definitions. Comments are optional: the root PBXGroup has none.
+DEFINITION = re.compile(r"^[ \t]{2}(" + ID + r")(?: /\* (.*?) \*/)? = \{", re.M)
+BUILD_FILE = re.compile(
+    r"^[ \t]*(" + ID + r") /\* (.*?) \*/ = \{isa = PBXBuildFile; "
+    r"fileRef = (" + ID + r") /\* (.*?) \*/; \};",
+    re.M,
 )
-APPS_METAL = sorted(p.name for p in (ROOT / "MaxCam").rglob("*.metal"))
-TESTS_SWIFT = sorted(p.name for p in (ROOT / "MaxCamTests").rglob("*.swift"))
+FILE_REFERENCE = re.compile(
+    r"^[ \t]*(" + ID + r") /\* (.*?) \*/ = \{isa = PBXFileReference;",
+    re.M,
+)
+SOURCES_PHASE = re.compile(
+    r"isa = PBXSourcesBuildPhase;.*?files = \((.*?)\);", re.S
+)
+
+
+def source_files() -> set[str]:
+    files = {p.name for p in (ROOT / "MaxCam").rglob("*.swift")}
+    files |= {p.name for p in (ROOT / "MaxCam").rglob("*.metal")}
+    return files
+
+
+def test_files() -> set[str]:
+    return {p.name for p in (ROOT / "MaxCamTests").rglob("*.swift")}
 
 
 def main() -> int:
     text = PBX.read_text()
     problems: list[str] = []
 
-    # Object definitions: `ID /* comment */ = {`.
-    defs = re.findall(r"^[ \t]*([A-F0-9]{24}) /\* [^*]+? \*/ = \{", text, re.M)
-    defined = set(defs)
-    duplicates = sorted({d for d in defs if defs.count(d) > 1})
+    definitions = DEFINITION.findall(text)
+    defined_ids = [object_id for object_id, _ in definitions]
+    defined = set(defined_ids)
+
+    duplicates = sorted({i for i in defined_ids if defined_ids.count(i) > 1})
     if duplicates:
         problems.append(f"duplicate object definitions: {duplicates}")
 
-    # Every ID mentioned with a comment marker must be defined.
-    mentioned = re.findall(r"\b([A-F0-9]{24}) /\* [^*]+? \*/", text)
-    missing = sorted({m for m in mentioned if m not in defined})
-    if missing:
-        problems.append(f"referenced but undefined: {missing}")
+    referenced = set(re.findall(ID, text))
+    undefined = sorted(referenced - defined)
+    if undefined:
+        problems.append(f"undefined object references: {undefined}")
 
-    # Object type histogram.
-    types = re.findall(r"isa = ([A-Za-z]+);", text)
-    expected_counts = {
-        "PBXFileReference": len(APPS_SWIFT) + len(APPS_METAL) + len(TESTS_SWIFT) + 1 + 2,  # sources + assets + 2 products
-        "PBXBuildFile": len(APPS_SWIFT) + len(APPS_METAL) + len(TESTS_SWIFT) + 1,  # +assets resource
-        "PBXGroup": 11,
-        "PBXNativeTarget": 2,
-        "PBXProject": 1,
-        "PBXSourcesBuildPhase": 2,
-        "PBXFrameworksBuildPhase": 2,
-        "PBXResourcesBuildPhase": 2,
-        "PBXTargetDependency": 1,
-        "PBXContainerItemProxy": 1,
-        "XCBuildConfiguration": 6,
-        "XCConfigurationList": 3,
-    }
-    actual = {t: types.count(t) for t in set(types)}
-    for t, want in expected_counts.items():
-        got = actual.get(t, 0)
-        if got != want:
-            problems.append(f"object type {t}: expected {want}, got {got}")
+    file_reference_ids = {i for i, _ in FILE_REFERENCE.findall(text)}
 
-    # App Sources phase contains every source file.
-    src_block = re.search(
-        r"AB12C12345CD000000000003 /\* Sources \*/ = \{(.*?)\n\t\t\};", text, re.S
-    )
-    if src_block:
-        app_names = set(re.findall(r"/\* ([^*]+?) in Sources \*/", src_block.group(1)))
-        missing_sources = sorted(set(APPS_SWIFT + APPS_METAL) - app_names)
-        if missing_sources:
-            problems.append(f"app Sources phase missing: {missing_sources}")
-        extra = sorted(app_names - set(APPS_SWIFT + APPS_METAL))
-        if extra:
-            problems.append(f"app Sources phase has unexpected: {extra}")
+    build_file_ids: set[str] = set()
+    for build_id, build_name, ref_id, ref_name in BUILD_FILE.findall(text):
+        build_file_ids.add(build_id)
+        if ref_id == build_id:
+            problems.append(f"{build_name}: fileRef points at itself ({ref_id})")
+            continue
+        if ref_id not in file_reference_ids:
+            problems.append(
+                f"{build_name}: fileRef {ref_id} ({ref_name}) is not a PBXFileReference"
+            )
+            continue
+        if build_name.replace(" in Sources", "").replace(" in Resources", "") != ref_name:
+            problems.append(
+                f"{build_name}: filename comment does not match fileRef ({ref_name})"
+            )
 
-    # Tests Sources phase contains the test file(s).
-    test_src = re.search(
-        r"E2A2123456AC000000000010 /\* Sources \*/ = \{(.*?)\n\t\t\};", text, re.S
-    )
-    if test_src:
-        test_names = set(re.findall(r"/\* ([^*]+?) in Sources \*/", test_src.group(1)))
-        if set(TESTS_SWIFT) != test_names:
-            problems.append(f"tests Sources phase mismatch: {test_names} vs {TESTS_SWIFT}")
+    # Sources phases must cover exactly the on-disk source files.
+    phases = SOURCES_PHASE.findall(text)
+    if len(phases) != 2:
+        problems.append(f"expected 2 PBXSourcesBuildPhase blocks, found {len(phases)}")
+
+    app_phase, tests_phase = (phases + ["", ""])[:2]
+    app_names = set(re.findall(r"/\* (.*?) in Sources \*/", app_phase))
+    test_names = set(re.findall(r"/\* (.*?) in Sources \*/", tests_phase))
+
+    expected_app = source_files()
+    if app_names != expected_app:
+        problems.append(
+            "app Sources phase mismatch: "
+            f"missing={sorted(expected_app - app_names)} "
+            f"extra={sorted(app_names - expected_app)}"
+        )
+
+    expected_tests = test_files()
+    if test_names != expected_tests:
+        problems.append(
+            "tests Sources phase mismatch: "
+            f"missing={sorted(expected_tests - test_names)} "
+            f"extra={sorted(test_names - expected_tests)}"
+        )
 
     # Products group.
-    prod = re.search(
-        r"AB12C12345CD000000000040 /\* Products \*/ = \{(.*?)\n\t\t\};", text, re.S
-    )
-    if prod:
-        prod_children = set(re.findall(r"\b([A-F0-9]{24}) /\* ([^*]+?) \*/", prod.group(1)))
-        if not prod_children:
-            problems.append("Products group is empty")
+    products = re.search(r"/\* Products \*/ = \{.*?children = \((.*?)\);", text, re.S)
+    if not products:
+        problems.append("Products group not found")
+    else:
+        product_names = re.findall(r"/\* (.*?) \*/", products.group(1))
+        expected = {"MaxCam.app", "MaxCamTests.xctest"}
+        if set(product_names) != expected:
+            problems.append(f"Products group contents {product_names} != {sorted(expected)}")
+
+    # rootObject.
+    root = re.search(r"rootObject = (" + ID + r") /\* (.*?) \*/;", text)
+    if not root:
+        problems.append("rootObject not found")
+    else:
+        root_id, root_name = root.groups()
+        project_ids = {
+            i for i, name in definitions if name == "Project object"
+        }
+        if root_id not in project_ids:
+            problems.append(f"rootObject {root_id} ({root_name}) is not the PBXProject")
+
+    main_group = re.search(r"mainGroup = (" + ID + r")", text)
+    if not main_group:
+        problems.append("mainGroup not found")
+    elif main_group.group(1) not in defined:
+        problems.append(f"mainGroup {main_group.group(1)} is not defined")
 
     if problems:
         print("VALIDATION FAILED")
-        for p in problems:
-            print(" -", p)
+        for problem in problems:
+            print(f"  - {problem}")
         return 1
 
-    print(f"VALIDATION OK: {len(defined)} objects")
+    print(
+        f"VALIDATION OK: {len(defined)} objects, "
+        f"{len(build_file_ids)} build files, "
+        f"{len(app_names)} app sources, {len(test_names)} test sources"
+    )
     return 0
 
 

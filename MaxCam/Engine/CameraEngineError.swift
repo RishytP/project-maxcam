@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 import OSLog
 
-// Platform warnings emitted by the camera engine, keyed for the UI.
+/// Platform errors emitted by the camera engine, surfaced verbatim in the UI.
 enum CameraEngineError: Error, LocalizedError, Equatable {
     case cameraAccessDenied
     case noCameraFound
@@ -12,13 +12,15 @@ enum CameraEngineError: Error, LocalizedError, Equatable {
     case notRecording
     case writerUnavailable
     case finalizationIncomplete
+    case frameRateNotSupported(Double)
+    case colorSpaceNotSupported(String)
 
     var errorDescription: String? {
         switch self {
         case .cameraAccessDenied:
             return "Camera access was denied. Enable it in Settings to continue."
         case .noCameraFound:
-            return "No rear camera is available on this device."
+            return "No camera is available on this device."
         case .sessionConfigurationFailed:
             return "The capture session could not be configured."
         case .invalidConfiguration:
@@ -31,6 +33,10 @@ enum CameraEngineError: Error, LocalizedError, Equatable {
             return "The media writer became unavailable."
         case .finalizationIncomplete:
             return "Recording stopped but the file was not finalized cleanly."
+        case .frameRateNotSupported(let rate):
+            return "\(Int(rate.rounded())) fps is not supported by the active format."
+        case .colorSpaceNotSupported(let name):
+            return "The active format does not support the \(name) color space."
         }
     }
 }

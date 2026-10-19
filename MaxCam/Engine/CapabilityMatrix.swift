@@ -1,161 +1,119 @@
 import AVFoundation
+import CoreMedia
 import Foundation
 
-/// A validated, selectable recording configuration. Instances are only
-/// produced by `CapabilityMatrix` after cross-checking every AVFoundation
-/// capability surface, so the UI can trust that what it shows works.
-struct RecordingConfiguration: Identifiable, Equatable, Sendable {
-    enum Pipeline: String, Equatable, Sendable {
-        case nativeProRes
-        case photoRawProRes
-        case hevc
+/// Chroma subsampling of the encoded stream.
+enum ChromaFormat: String, Equatable, Sendable {
+    case yuv420 = "4:2:0"
+    case yuv422 = "4:2:2"
+    case yuv444 = "4:4:4"
 
-        var displayName: String {
-            switch self {
-            case .nativeProRes: return "ProRes"
-            case .photoRawProRes: return "ProRes RAW (photo)"
-            case .hevc: return "HEVC"
-            }
+    var displayName: String { rawValue }
+}
+
+/// How a recording is produced.
+enum RecordingPipeline: String, Equatable, Sendable {
+    /// HEVC written by `AVAssetWriter` from `AVCaptureVideoDataOutput` buffers.
+    case hevc
+    /// A ProRes variant written in place by `AVCaptureMovieFileOutput`.
+    case proResMovieFile
+    /// ProRes RAW. Only ever produced when the system advertises the codec.
+    case proResRAW
+
+    var displayName: String {
+        switch self {
+        case .hevc: return "HEVC"
+        case .proResMovieFile: return "ProRes"
+        case .proResRAW: return "ProRes RAW"
         }
     }
+}
 
+/// A validated, selectable recording configuration.
+///
+/// Instances are only produced by `CapabilityMatrix`, which cross-checks the
+/// device's real format ranges, color spaces and advertised codecs, so the UI
+/// can trust that everything it shows is genuinely available.
+struct RecordingConfiguration: Identifiable, Equatable, @unchecked Sendable {
     let id: UUID
-    let pipeline: Pipeline
+    let pipeline: RecordingPipeline
     let resolution: CMVideoDimensions
     let frameRate: Double
     let colorSpace: AVCaptureColorSpace
     let codec: AVVideoCodecType
-    let bitDepth: Int?
-    let usesProResRAW: Bool
+    let bitDepth: Int
+    let chroma: ChromaFormat
     let isAppleLog2: Bool
     let isAppleLog: Bool
     let isHDR: Bool
+    /// True when the underlying format scans a square sensor area, i.e. true
+    /// sensor-format Open Gate rather than a cropped frame.
+    let isOpenGate: Bool
+    /// Source format the configuration was derived from.
+    let sourceFormatID: String
 
-    var resolutionLabel: String {
-        "\(resolution.width) x \(resolution.height)"
+    var width: Int { Int(resolution.width) }
+    var height: Int { Int(resolution.height) }
+
+    var resolutionLabel: String { "\(width) x \(height)" }
+
+    var colorLabel: String {
+        if isAppleLog2 { return "Apple Log 2" }
+        if isAppleLog { return "Apple Log" }
+        return colorSpace.displayName
     }
 
     var summary: String {
-        let color = isAppleLog2 ? "LOG2" : (isAppleLog ? "LOG" : colorSpace.displayName)
-        return "\(resolutionLabel) \(Int(frameRate))fps \(codec.rawValue) \(pipeline.displayName) \(color)"
+        let gate = isOpenGate ? " OPEN GATE" : ""
+        return "\(resolutionLabel)\(gate) \(Int(frameRate.rounded()))fps \(codec.rawValue) \(pipeline.displayName) \(colorLabel) \(bitDepth)-bit \(chroma.displayName)"
     }
 }
 
 /// Builds the authoritative capability matrix from the discovered devices.
-/// Every entry is derived from a real format's `videoSupportedFrameRateRanges`,
-/// `supportedColorSpaces`, and the video data output's advertised codecs.
+///
+/// Every entry derives from a real format's `videoSupportedFrameRateRanges`,
+/// `supportedColorSpaces` and the codecs the system actually advertises.
 enum CapabilityMatrix {
-    /// Builds every valid config from the discovery result.
-    static func configurations(
-        devices: [CameraDeviceInfo],
-        preferredDeviceID: String?,
-        fallbackFrameRate: Double = 0,
-        supportedCodecs: [AVVideoCodecType] = [.hevc]
-    ) -> [RecordingConfiguration] {
-        guard let camera = pick(devices, preferredDeviceID) else { return [] }
+
+    struct Inputs {
+        let devices: [CameraDeviceInfo]
+        let preferredDeviceID: String?
+        /// Codecs advertised by `AVCaptureMovieFileOutput`, which is what the
+        /// ProRes (and ProRes RAW) paths depend on.
+        let movieFileCodecs: [AVVideoCodecType]
+    }
+
+    static func configurations(_ inputs: Inputs) -> [RecordingConfiguration] {
+        guard let camera = pick(inputs.devices, inputs.preferredDeviceID) else { return [] }
+
+        let proResFamily = proResCodecs(from: inputs.movieFileCodecs)
         var configs: [RecordingConfiguration] = []
 
-        let proResHQ = supportedCodecs.contains(.proRes422HQ)
-
-        // A ProRes 4444 / XQ pipeline would need gating on chroma support and
-        // is not offered to avoid silent misuse; we only expose the 10-bit 422
-        // family that ProRes on iPhone records natively.
-
         for formatInfo in camera.formats {
-            let width = formatInfo.dimensions.width
-            let height = formatInfo.dimensions.height
-            guard width > 0, height > 0 else { continue }
+            let width = Int(formatInfo.dimensions.width)
+            let height = Int(formatInfo.dimensions.height)
+            guard width > 0, height > 0, max(width, height) >= 1280 else { continue }
 
-            // Skip tiny formats that are clearly not "cine" (e.g. ultra-small
-            // scan modes used for specific lenses or preview-only modes).
-            guard max(width, height) >= 1920 else { continue }
-
-            var frameRates = frameRateOptions(
+            let frameRates = frameRateOptions(
                 min: formatInfo.minFrameRate,
-                max: formatInfo.maxFrameRate,
-                fallback: fallbackFrameRate
+                max: formatInfo.maxFrameRate
             )
-            // 25fps is a common cinema frame rate; ensure it shows up when the
-            // range covers it.
-            if !frameRates.contains(25), formatInfo.minFrameRate <= 25, formatInfo.maxFrameRate >= 25 {
-                frameRates.append(25)
-                frameRates.sort()
-            }
-
-            let colorSpaces = formatInfo.supportedColorSpaces
-            let canLog2 = colorSpaces.contains(where: { $0.isLog2 })
-            let canLog = colorSpaces.contains(where: { $0.isLog1 })
-            let canWide = colorSpaces.contains(where: { $0.isWideColorSpace })
-            let canSDR = colorSpaces.contains { $0 == .sRGB }
+            guard !frameRates.isEmpty else { continue }
 
             for fps in frameRates {
-                // A high dynamic range (HLG, HDR) config: only when the format
-                // actually declares video HDR support.
-                if formatInfo.isVideoHDRSupported && colorSpaces.contains(where: { $0 == .hlgBT2020 }) {
-                    configs.append(RecordingConfiguration(
-                        id: UUID(),
-                        pipeline: .hevc,
-                        resolution: formatInfo.dimensions,
-                        frameRate: fps,
-                        colorSpace: .hlgBT2020,
-                        codec: .hevc,
-                        bitDepth: 10,
-                        usesProResRAW: false,
-                        isAppleLog2: false,
-                        isAppleLog: false,
-                        isHDR: true
-                    ))
-                }
-
-                // SDR / wide / log configurations. Only create a "Log2" one when
-                // the format really supports Apple Log 2.
-                var colorChoices: [AVCaptureColorSpace] = []
-                if #available(iOS 26.0, *), canLog2 {
-                    colorChoices.append(.appleLog2)
-                }
-                if canLog && !canLog2 {
-                    colorChoices.append(.appleLog)
-                }
-                if canWide {
-                    colorChoices.append(.p3D65)
-                }
-                if canSDR {
-                    colorChoices.append(.sRGB)
-                }
-
-                for cs in colorChoices {
-                    let isLog2 = cs.isLog2
-                    configs.append(RecordingConfiguration(
-                        id: UUID(),
-                        pipeline: .hevc,
-                        resolution: formatInfo.dimensions,
-                        frameRate: fps,
-                        colorSpace: cs,
-                        codec: .hevc,
-                        bitDepth: 10,
-                        usesProResRAW: false,
-                        isAppleLog2: isLog2,
-                        isAppleLog: cs == .appleLog && !isLog2,
-                        isHDR: false
+                for colorSpace in colorChoices(for: formatInfo) {
+                    configs.append(makeHEVCConfig(
+                        formatInfo: formatInfo,
+                        colorSpace: colorSpace,
+                        frameRate: fps
                     ))
 
-                    // Native ProRes recording (Phase 7): only offered when the
-                    // device advertises a ProRes codec. ProRes on iPhone is
-                    // capped at 30 fps by the silicon encoder; we honor that
-                    // rather than offering unsupportable combinations.
-                    if proResHQ && fps <= 30 {
-                        configs.append(RecordingConfiguration(
-                            id: UUID(),
-                            pipeline: .nativeProRes,
-                            resolution: formatInfo.dimensions,
+                    if let proResCodec = bestProResCodec(proResFamily, frameRate: fps) {
+                        configs.append(makeProResConfig(
+                            formatInfo: formatInfo,
+                            colorSpace: colorSpace,
                             frameRate: fps,
-                            colorSpace: cs,
-                            codec: .proRes422HQ,
-                            bitDepth: 10,
-                            usesProResRAW: false,
-                            isAppleLog2: isLog2,
-                            isAppleLog: cs == .appleLog && !isLog2,
-                            isHDR: false
+                            codec: proResCodec
                         ))
                     }
                 }
@@ -165,45 +123,150 @@ enum CapabilityMatrix {
         return dedupe(configs)
     }
 
+    // MARK: - Color spaces
+
+    private static func colorChoices(for formatInfo: CameraFormatInfo) -> [AVCaptureColorSpace] {
+        var choices: [AVCaptureColorSpace] = []
+        // Apple Log 2 first: it is the highest-quality log the device offers.
+        // The symbol itself is iOS 26-only, so it is only named inside the
+        // availability guard even though the runtime check already passed.
+        if formatInfo.supportsAppleLog2 {
+            if #available(iOS 26.0, *) {
+                choices.append(.appleLog2)
+            }
+        }
+        if formatInfo.supportsAppleLog {
+            choices.append(.appleLog)
+        }
+        if formatInfo.supportedColorSpaces.contains(.hlgBT2020), formatInfo.isVideoHDRSupported {
+            choices.append(.hlgBT2020)
+        }
+        if formatInfo.supportedColorSpaces.contains(.p3D65) {
+            choices.append(.p3D65)
+        }
+        if formatInfo.supportedColorSpaces.contains(.sRGB) {
+            choices.append(.sRGB)
+        }
+        return choices
+    }
+
+    // MARK: - Configuration builders
+
+    private static func makeHEVCConfig(
+        formatInfo: CameraFormatInfo,
+        colorSpace: AVCaptureColorSpace,
+        frameRate: Double
+    ) -> RecordingConfiguration {
+        // The HEVC path consumes 10-bit buffers whenever the pipeline can carry
+        // them, which the log and HDR color spaces always can. SDR P3/sRGB is
+        // still recorded 10-bit so gradients survive the encode.
+        RecordingConfiguration(
+            id: UUID(),
+            pipeline: .hevc,
+            resolution: formatInfo.dimensions,
+            frameRate: frameRate,
+            colorSpace: colorSpace,
+            codec: .hevc,
+            bitDepth: 10,
+            chroma: .yuv420,
+            isAppleLog2: colorSpace.isAppleLog2,
+            isAppleLog: colorSpace == .appleLog,
+            isHDR: colorSpace == .hlgBT2020,
+            isOpenGate: formatInfo.isOpenGateCapable,
+            sourceFormatID: formatInfo.id
+        )
+    }
+
+    private static func makeProResConfig(
+        formatInfo: CameraFormatInfo,
+        colorSpace: AVCaptureColorSpace,
+        frameRate: Double,
+        codec: AVVideoCodecType
+    ) -> RecordingConfiguration {
+        RecordingConfiguration(
+            id: UUID(),
+            pipeline: .proResMovieFile,
+            resolution: formatInfo.dimensions,
+            frameRate: frameRate,
+            colorSpace: colorSpace,
+            codec: codec,
+            bitDepth: 10,
+            chroma: .yuv422,
+            isAppleLog2: colorSpace.isAppleLog2,
+            isAppleLog: colorSpace == .appleLog,
+            isHDR: colorSpace == .hlgBT2020,
+            isOpenGate: formatInfo.isOpenGateCapable,
+            sourceFormatID: formatInfo.id
+        )
+    }
+
+    // MARK: - Codec selection
+
+    /// Ordered best-first so the highest quality ProRes the device advertises is
+    /// the one offered.
+    private static let proResPreference: [AVVideoCodecType] = [
+        .proRes4444,
+        .proRes422HQ,
+        .proRes422,
+        .proRes422LT,
+        .proRes422Proxy,
+    ]
+
+    static func proResCodecs(from advertised: [AVVideoCodecType]) -> [AVVideoCodecType] {
+        proResPreference.filter { advertised.contains($0) }
+    }
+
+    /// ProRes on iPhone is capped at 30 fps by the hardware encoder, so higher
+    /// frame rates simply get no ProRes option rather than an unsupportable one.
+    static func bestProResCodec(
+        _ available: [AVVideoCodecType],
+        frameRate: Double
+    ) -> AVVideoCodecType? {
+        guard frameRate <= 30.0 + 0.01 else { return nil }
+        return available.first
+    }
+
+    // MARK: - Helpers
+
     private static func pick(_ devices: [CameraDeviceInfo], _ preferred: String?) -> CameraDeviceInfo? {
         if let preferred, let match = devices.first(where: { $0.uniqueID == preferred }) {
             return match
         }
-        return devices.first { $0.position == .back }
+        return devices.first { $0.position == .back } ?? devices.first
     }
 
-    private static func frameRateOptions(min: Double, max: Double, fallback: Double) -> [Double] {
-        var rates = Set<Double>()
-        for f in [23.976, 24,  25,  29.97,  30,  47.95,  48,  59.94,  60,  120,  240] {
-            if f >= min - 0.01 && f <= max + 0.01 { rates.insert(f) }
+    /// The cinema frame rates that fall inside the format's real range. Values
+    /// are exact: no rounding, so 23.976 stays distinct from 24.
+    static let candidateFrameRates: [Double] = [
+        23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 100, 119.88, 120, 240,
+    ]
+
+    static func frameRateOptions(min: Double, max: Double) -> [Double] {
+        let tolerance = 0.01
+        var rates = candidateFrameRates.filter { $0 >= min - tolerance && $0 <= max + tolerance }
+        if rates.isEmpty {
+            rates = [min]
         }
-        if fallback > 0, fallback >= min, fallback <= max { rates.insert(fallback) }
-        var sorted = Array(rates).sorted()
-        if sorted.isEmpty { sorted = [min] }
-        return sorted
+        return rates
     }
 
     private static func dedupe(_ configs: [RecordingConfiguration]) -> [RecordingConfiguration] {
         var seen = Set<String>()
         var out: [RecordingConfiguration] = []
-        for c in configs {
-            let key = "\(c.pipeline)|\(c.width)x\(c.height)|\(c.frameRate)|\(c.colorSpace.rawValue)|\(c.codec.rawValue)"
-            if seen.insert(key).inserted { out.append(c) }
+        for config in configs {
+            let key = "\(config.pipeline.rawValue)|\(config.width)x\(config.height)|"
+                + "\(config.frameRate)|\(config.colorSpace.rawValue)|\(config.codec.rawValue)"
+            if seen.insert(key).inserted {
+                out.append(config)
+            }
         }
         return out
     }
 }
 
-extension RecordingConfiguration {
-    var width: Int { Int(resolution.width) }
-    var height: Int { Int(resolution.height) }
-}
-
-private extension AVCaptureColorSpace {
-    var isLog2: Bool {
-        if #available(iOS 26.0, *), self == .appleLog2 { return true }
-        return false
+extension AVCaptureColorSpace {
+    var isAppleLog2: Bool {
+        guard #available(iOS 26.0, *) else { return false }
+        return self == .appleLog2
     }
-    var isLog1: Bool { self == .appleLog }
-    var isWideColorSpace: Bool { self == .p3D65 }
 }

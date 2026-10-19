@@ -1,18 +1,4 @@
-import Metal
-import UIKit
-
-enum AppEnvironment {
-    static func metalDevice() -> MTLDevice {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            fatalError("Metal is required by this application.")
-        }
-        return device
-    }
-
-    static func isLowPowerModeEnabled() -> Bool {
-        ProcessInfo.processInfo.isLowPowerModeEnabled
-    }
-}
+import Foundation
 
 extension ProcessInfo.ThermalState {
     var displayName: String {
@@ -21,7 +7,14 @@ extension ProcessInfo.ThermalState {
         case .fair: return "fair"
         case .serious: return "serious"
         case .critical: return "critical"
-        default: return "unknown"
+        @unknown default: return "unknown"
         }
+    }
+}
+
+extension ProcessInfo {
+    /// True when the device is hot enough that the app should shed load.
+    var isThermallyConstrained: Bool {
+        thermalState == .serious || thermalState == .critical
     }
 }

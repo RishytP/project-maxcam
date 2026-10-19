@@ -3,62 +3,47 @@ import Foundation
 
 /// Hardware-backed encoder capabilities for the current device, sourced from
 /// AVFoundation only. No values are assumed.
-struct EncoderCapabilities {
-    /// Codecs advertised by an `AVCaptureMovieFileOutput` on this device
-    /// (intrinsic to the pipeline that writes movie files in place).
+///
+/// `AVCaptureMovieFileOutput` is what advertises the in-place movie codecs, and
+/// that list is also what gates the ProRes family: if the system does not
+/// advertise `apcn`/`apch`/…, the device cannot record ProRes and we say so.
+struct EncoderCapabilities: @unchecked Sendable {
     let movieFileCodecs: [AVVideoCodecType]
 
     static func current() -> EncoderCapabilities {
-        let movieOutput = AVCaptureMovieFileOutput()
-        let movieCodecs = movieOutput.availableVideoCodecTypes
-        return EncoderCapabilities(movieFileCodecs: movieCodecs)
+        EncoderCapabilities(movieFileCodecs: AVCaptureMovieFileOutput().availableVideoCodecTypes)
     }
 
     var supportsHEVC: Bool {
-        movieFileCodecs.contains(.hevc) ||
         movieFileCodecs.contains { $0.rawValue == AVVideoCodecType.hevc.rawValue }
     }
 
-    var supportsProRes: Bool {
-        EncoderCapabilities.isProRes(advertised: movieFileCodecs)
+    var supportsH264: Bool {
+        movieFileCodecs.contains { $0.rawValue == AVVideoCodecType.h264.rawValue }
     }
 
-    var supportsAppleLog: Bool {
-        // Log capture availability is derived per-format via supportedColorSpaces;
-        // the encoder only needs to preserve the encoded color space through the
-        // color properties we set on the writer input. There is no separate
-        // "Log codec" to advertise.
-        true
-    }
-
+    /// Standard ProRes 422 family (and 4444). Deliberately excludes ProRes RAW.
     var proResCodecs: [AVVideoCodecType] {
-        movieFileCodecs.filter { EncoderCapabilities.isProRes(advertised: [$0]) }
+        EncoderCapabilities.standardProRes.filter { movieFileCodecs.contains($0) }
     }
 
-    // FourCC families for the ProRes codecs AVFoundation advertises.
-    private static func isProRes(advertised codecs: [AVVideoCodecType]) -> Bool {
-        let proResFourCCs: [String] = [
-            "apcn", // Apple ProRes 422
-            "apch", // Apple ProRes 422 HQ
-            "apcs", // Apple ProRes 422 LT
-            "apco", // Apple ProRes 422 Proxy
-            "ap4h", // Apple ProRes 4444
-            "ap4x", // Apple ProRes 4444 XQ
-            "aprn", // ProRes RAW (natively recorded by iPhone 17 Pro line)
-        ]
-        return codecs.contains { codec in
-            guard let fourCC = codec.fourCharCodeString else { return false }
-            return proResFourCCs.contains(fourCC)
-        }
+    var supportsProRes: Bool {
+        !proResCodecs.isEmpty
     }
-}
 
-private extension AVVideoCodecType {
-    /// The four-character-code spelling of the codec, e.g. "hvc1", "apcn".
-    var fourCharCodeString: String? {
-        let raw = rawValue as NSString
-        guard raw.length == 4 else { return nil }
-        // AVVideoCodecType.rawValue is "avc1", "hvc1", "apcn", etc.
-        return raw as String
+    /// ProRes RAW is a different codec from ProRes 422 and is reported
+    /// separately. It is only ever true when the system advertises `aprn`.
+    var supportsProResRAW: Bool {
+        movieFileCodecs.contains { $0.rawValue == "aprn" }
+    }
+
+    static let standardProRes: [AVVideoCodecType] = [
+        .proRes4444, .proRes422HQ, .proRes422, .proRes422LT, .proRes422Proxy,
+    ]
+
+    var reportLine: String {
+        movieFileCodecs.isEmpty
+            ? "none"
+            : movieFileCodecs.map(\.rawValue).joined(separator: ", ")
     }
 }
