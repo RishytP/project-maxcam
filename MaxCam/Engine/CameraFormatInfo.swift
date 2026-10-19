@@ -2,6 +2,14 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
+/// `CMVideoDimensions` is an imported C struct and does not conform to
+/// `Equatable`, so resolution comparisons go through this helper.
+extension CMVideoDimensions {
+    func sameResolution(as other: CMVideoDimensions) -> Bool {
+        width == other.width && height == other.height
+    }
+}
+
 /// A device-agnostic, read-only snapshot of a single `AVCaptureDevice.Format`.
 ///
 /// `AVCaptureDevice.Format` is not `Sendable`, so the engine snapshots every

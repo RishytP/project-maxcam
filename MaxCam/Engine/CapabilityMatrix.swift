@@ -67,6 +67,26 @@ struct RecordingConfiguration: Identifiable, Equatable, @unchecked Sendable {
         let gate = isOpenGate ? " OPEN GATE" : ""
         return "\(resolutionLabel)\(gate) \(Int(frameRate.rounded()))fps \(codec.rawValue) \(pipeline.displayName) \(colorLabel) \(bitDepth)-bit \(chroma.displayName)"
     }
+
+    /// Written out by hand because `CMVideoDimensions` is an imported C struct
+    /// and does not conform to `Equatable`, so the synthesised version would not
+    /// compile. The comparison uses the meaningful value fields.
+    static func == (lhs: RecordingConfiguration, rhs: RecordingConfiguration) -> Bool {
+        lhs.id == rhs.id
+            && lhs.pipeline == rhs.pipeline
+            && lhs.width == rhs.width
+            && lhs.height == rhs.height
+            && lhs.frameRate == rhs.frameRate
+            && lhs.colorSpace.rawValue == rhs.colorSpace.rawValue
+            && lhs.codec.rawValue == rhs.codec.rawValue
+            && lhs.bitDepth == rhs.bitDepth
+            && lhs.chroma == rhs.chroma
+            && lhs.isAppleLog2 == rhs.isAppleLog2
+            && lhs.isAppleLog == rhs.isAppleLog
+            && lhs.isHDR == rhs.isHDR
+            && lhs.isOpenGate == rhs.isOpenGate
+            && lhs.sourceFormatID == rhs.sourceFormatID
+    }
 }
 
 /// Builds the authoritative capability matrix from the discovered devices.

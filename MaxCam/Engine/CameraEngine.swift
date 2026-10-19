@@ -578,10 +578,10 @@ final class CameraEngine: NSObject, @unchecked Sendable {
             .filter { deviceID == nil || $0.uniqueID == deviceID }
             .flatMap(\.formats)
         guard let match = candidates.first(where: {
-            $0.dimensions == configuration.resolution
+            $0.dimensions.sameResolution(as: configuration.resolution)
                 && $0.maxFrameRate + 0.01 >= configuration.frameRate
                 && $0.supportedColorSpaces.contains(configuration.colorSpace)
-        }) ?? candidates.first(where: { $0.dimensions == configuration.resolution }) else {
+        }) ?? candidates.first(where: { $0.dimensions.sameResolution(as: configuration.resolution) }) else {
             throw CameraEngineError.invalidConfiguration
         }
         return match

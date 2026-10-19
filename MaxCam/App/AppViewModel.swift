@@ -113,11 +113,11 @@ final class AppViewModel: ObservableObject {
         return camera.formats.first {
             $0.id == config.sourceFormatID
         } ?? camera.formats.first {
-            $0.dimensions == config.resolution
+            $0.dimensions.sameResolution(as: config.resolution)
                 && $0.supportedColorSpaces.contains(config.colorSpace)
                 && $0.maxFrameRate + 0.01 >= config.frameRate
         } ?? camera.formats.first {
-            $0.dimensions == config.resolution
+            $0.dimensions.sameResolution(as: config.resolution)
         }
     }
 
