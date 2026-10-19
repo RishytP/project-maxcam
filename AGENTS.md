@@ -18,6 +18,9 @@ feedback loop**.
   object graph (undefined/duplicate IDs, `PBXBuildFile` -> `PBXFileReference`
   integrity, Sources-phase coverage, Products group, `rootObject`/`mainGroup`).
   Run it after any `project.pbxproj` edit.
+- `project.pbxproj` is TAB-indented. Match tabs exactly when scripting edits;
+  a space-indented pattern silently matches nothing (or matches a deeper line
+  as a substring) and the registration is silently skipped.
 
 ## Project file gotchas
 
@@ -37,6 +40,14 @@ feedback loop**.
 - `lensAperture` is on `AVCaptureDevice`, not `AVCaptureDevice.Format`.
 - `AVCaptureDevice.AspectRatio` is a raw-representable **struct**, not an enum:
   compare with `==`, never `switch`.
+- `AVCaptureColorSpace` members are `.P3_D65` and `.HLG_BT2020` (capitalised),
+  not `.p3D65` / `.hlgBT2020`.
+- The 10-bit "Lossless" pixel format constants do not exist. CoreVideo declares
+  only `kCVPixelFormatType_Lossless_420YpCbCr8BiPlanar*` and the 10-bit
+  `..._Lossless_420YpCbCr10PackedBiPlanar*` spellings.
+- `AVCapturePhotoOutput.availableRawPhotoPixelFormatTypes` is only populated
+  after the output is added to a session that has a video input. Read it after
+  `addOutput`, not before.
 - Setting `AVCaptureVideoDataOutput.videoSettings` to a format not in
   `availableVideoPixelFormatTypes` can raise. Set it only after the output is
   attached and the format is active.
