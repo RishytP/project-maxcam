@@ -36,9 +36,9 @@ static float3 p3ToRec709(float3 p3) {
 kernel void displayTransform(
     texture2d<float, access::read>  src [[texture(0)]],
     texture2d<float, access::write> dst [[texture(1)]],
-    constant uint &mode [[buffer(0)]]
+    constant uint &mode [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
 ) {
-    const uint2 gid = uint2(thread_position_in_grid.xy);
     if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) {
         return;
     }
