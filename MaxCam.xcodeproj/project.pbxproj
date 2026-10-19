@@ -70,7 +70,7 @@
 				AB12C12345CD000000000022 /* Preview */,
 				AB12C12345CD000000000023 /* UI */,
 				AB12C12345CD000000000024 /* Support */,
-				AB12C12345CD000000000025 /* Assets.xcassets */,
+				AB12C12345CD000000000251 /* Assets.xcassets */,
 			);
 			path = MaxCam;
 			sourceTree = "<group>";
@@ -141,14 +141,6 @@
 				AB12C12345CD000000000241 /* AppEnvironment.swift */,
 			);
 			path = Support;
-			sourceTree = "<group>";
-		};
-		AB12C12345CD000000000025 /* Assets.xcassets */ = {
-			isa = PBXGroup;
-			children = (
-				AB12C12345CD000000000251 /* Assets.xcassets */,
-			);
-			path = Assets.xcassets;
 			sourceTree = "<group>";
 		};
 		AB12C12345CD000000000040 /* Products */ = {

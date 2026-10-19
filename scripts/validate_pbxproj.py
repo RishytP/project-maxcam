@@ -116,6 +116,28 @@ def main() -> int:
             if child in build_file_ids:
                 problems.append(f"PBXGroup lists build file {child} as a child")
 
+    # A group whose `path` equals a child's `path` resolves to the duplicated
+    # path (Assets.xcassets/Assets.xcassets). That makes actool look for the
+    # catalog one level too deep and fail with "None of the input catalogs
+    # contained a matching ... app icon set named AppIcon".
+    group_bodies = re.findall(r"isa = PBXGroup;(.*?)\n\t\t\};", text, re.S)
+    for body in group_bodies:
+        path = re.search(r"path = ([^;]+);", body)
+        if not path:
+            continue
+        group_path = path.group(1).strip().strip('"')
+        for child in re.findall(ID, body):
+            child_match = re.search(
+                r"^[ \t]*" + child + r" /\* (.*?) \*/ = \{isa = PBXFileReference;[^}]*?path = ([^;]+);",
+                text,
+                re.M,
+            )
+            if child_match and child_match.group(2).strip().strip('"') == group_path:
+                problems.append(
+                    f"PBXGroup path '{group_path}' duplicates child {child} "
+                    f"({child_match.group(1)}); this doubles the path"
+                )
+
     # Sources phases must cover exactly the on-disk source files.
     phases = SOURCES_PHASE.findall(text)
     if len(phases) != 2:
