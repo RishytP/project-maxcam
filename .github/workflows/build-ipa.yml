@@ -40,6 +40,9 @@ jobs:
       - name: Validate project graph
         run: python3 scripts/validate_pbxproj.py
 
+      - name: Ensure app icon exists
+        run: python3 scripts/generate_app_icon.py
+
       - name: Resolve test destination
         id: destination
         run: |
