@@ -108,7 +108,7 @@ struct CameraFormatInfo: Identifiable, @unchecked Sendable {
     }
 
     var isWideColor: Bool {
-        supportedColorSpaces.contains { $0 == .p3D65 }
+        supportedColorSpaces.contains { $0 == .P3_D65 }
     }
 
     var supportsAppleLog: Bool {
@@ -128,9 +128,7 @@ struct CameraFormatInfo: Identifiable, @unchecked Sendable {
         case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
              kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
              kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange,
-             kCVPixelFormatType_422YpCbCr10BiPlanarFullRange,
-             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarVideoRange,
-             kCVPixelFormatType_Lossless_420YpCbCr10BiPlanarFullRange:
+             kCVPixelFormatType_422YpCbCr10BiPlanarFullRange:
             return 10
         case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
              kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
@@ -185,9 +183,9 @@ extension AVCaptureColorSpace {
     var displayName: String {
         switch self {
         case .sRGB: return "sRGB"
-        case .p3D65: return "P3-D65"
+        case .P3_D65: return "P3-D65"
         case .appleLog: return "Apple Log"
-        case .hlgBT2020: return "HLG BT.2020"
+        case .HLG_BT2020: return "HLG BT.2020"
         default:
             if #available(iOS 26.0, *), self == .appleLog2 {
                 return "Apple Log 2"

@@ -158,11 +158,11 @@ enum CapabilityMatrix {
         if formatInfo.supportsAppleLog {
             choices.append(.appleLog)
         }
-        if formatInfo.supportedColorSpaces.contains(.hlgBT2020), formatInfo.isVideoHDRSupported {
-            choices.append(.hlgBT2020)
+        if formatInfo.supportedColorSpaces.contains(.HLG_BT2020), formatInfo.isVideoHDRSupported {
+            choices.append(.HLG_BT2020)
         }
-        if formatInfo.supportedColorSpaces.contains(.p3D65) {
-            choices.append(.p3D65)
+        if formatInfo.supportedColorSpaces.contains(.P3_D65) {
+            choices.append(.P3_D65)
         }
         if formatInfo.supportedColorSpaces.contains(.sRGB) {
             choices.append(.sRGB)
@@ -191,7 +191,7 @@ enum CapabilityMatrix {
             chroma: .yuv420,
             isAppleLog2: colorSpace.isAppleLog2,
             isAppleLog: colorSpace == .appleLog,
-            isHDR: colorSpace == .hlgBT2020,
+            isHDR: colorSpace == .HLG_BT2020,
             isOpenGate: formatInfo.isOpenGateCapable,
             sourceFormatID: formatInfo.id
         )
@@ -214,7 +214,7 @@ enum CapabilityMatrix {
             chroma: .yuv422,
             isAppleLog2: colorSpace.isAppleLog2,
             isAppleLog: colorSpace == .appleLog,
-            isHDR: colorSpace == .hlgBT2020,
+            isHDR: colorSpace == .HLG_BT2020,
             isOpenGate: formatInfo.isOpenGateCapable,
             sourceFormatID: formatInfo.id
         )

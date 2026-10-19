@@ -533,13 +533,13 @@ final class CameraEngine: NSObject, @unchecked Sendable {
         switch configuration.colorSpace {
         case .appleLog:
             return logProperties()
-        case .hlgBT2020:
+        case .HLG_BT2020:
             return [
                 AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020,
                 AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_2100_HLG,
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020,
             ]
-        case .p3D65:
+        case .P3_D65:
             return [
                 AVVideoColorPrimariesKey: AVVideoColorPrimaries_P3_D65,
                 AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
@@ -691,8 +691,8 @@ extension CameraFormatInfo {
     var defaultColorSpace: AVCaptureColorSpace {
         if supportsAppleLog2 { return AVCaptureColorSpace.appleLog2Value }
         if supportsAppleLog { return .appleLog }
-        if supportedColorSpaces.contains(.hlgBT2020) { return .hlgBT2020 }
-        if supportedColorSpaces.contains(.p3D65) { return .p3D65 }
+        if supportedColorSpaces.contains(.HLG_BT2020) { return .HLG_BT2020 }
+        if supportedColorSpaces.contains(.P3_D65) { return .P3_D65 }
         return .sRGB
     }
 }
