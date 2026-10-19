@@ -41,6 +41,11 @@ FILE_REFERENCE = re.compile(
 SOURCES_PHASE = re.compile(
     r"isa = PBXSourcesBuildPhase;.*?files = \((.*?)\);", re.S
 )
+# Every phase's `files = (...)` list. This is what Xcode walks when it builds;
+# an entry that is not a PBXBuildFile crashes it with
+# "-[PBXFileReference buildPhase]: unrecognized selector".
+BUILD_PHASE = re.compile(r"isa = (PBX\w*BuildPhase);.*?files = \((.*?)\);", re.S)
+GROUP = re.compile(r"isa = PBXGroup;.*?children = \((.*?)\);", re.S)
 
 
 def source_files() -> set[str]:
@@ -87,6 +92,29 @@ def main() -> int:
             problems.append(
                 f"{build_name}: filename comment does not match fileRef ({ref_name})"
             )
+
+    # Every entry in a phase's files list must be a PBXBuildFile, and every
+    # build file must belong to a phase. This is the exact shape Xcode requires.
+    phase_entries: set[str] = set()
+    for phase_kind, entries in BUILD_PHASE.findall(text):
+        for entry in re.findall(ID, entries):
+            phase_entries.add(entry)
+            if entry not in build_file_ids:
+                problems.append(
+                    f"{phase_kind}: entry {entry} is not a PBXBuildFile "
+                    "(Xcode raises 'unrecognized selector')"
+                )
+    orphans = sorted(build_file_ids - phase_entries)
+    if orphans:
+        problems.append(f"build files not referenced by any build phase: {orphans}")
+
+    # Group children may only be groups or file references.
+    for children in GROUP.findall(text):
+        for child in re.findall(ID, children):
+            if child not in defined:
+                continue
+            if child in build_file_ids:
+                problems.append(f"PBXGroup lists build file {child} as a child")
 
     # Sources phases must cover exactly the on-disk source files.
     phases = SOURCES_PHASE.findall(text)
