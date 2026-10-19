@@ -14,6 +14,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var lastRecording: RecordingSessionInfo?
     @Published private(set) var encoder: EncoderCapabilities
+    @Published private(set) var raw: RawCapabilityProbe
 
     @Published var selectedConfiguration: RecordingConfiguration?
     @Published var preferredLensID: String?
@@ -38,6 +39,7 @@ final class AppViewModel: ObservableObject {
         self.engine = engine
         self.capabilities = engine.capabilities
         self.encoder = EncoderCapabilities.current()
+        self.raw = RawCapabilityProbe.current()
         self.preferredLensID = engine.capabilities.rearCameras.first?.uniqueID
     }
 

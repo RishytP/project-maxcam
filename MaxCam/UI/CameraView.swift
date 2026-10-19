@@ -33,7 +33,11 @@ struct CameraView: View {
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
         .sheet(isPresented: $showCapabilities) {
-            CapabilitiesView(capabilities: viewModel.capabilities, encoder: viewModel.encoder)
+            CapabilitiesView(
+                capabilities: viewModel.capabilities,
+                encoder: viewModel.encoder,
+                raw: viewModel.raw
+            )
         }
         .sheet(isPresented: $showFormatPicker) {
             FormatPickerView(viewModel: viewModel)

@@ -13,6 +13,7 @@ struct DiagnosticsExport {
     let cameras: [CameraDeviceInfo]
     let encoderCodecs: [String]
     let videoPixelFormatTypes: [String]
+    let rawPhotoFormats: String
     let thermalState: String
     let featureFlags: [String: Bool]
 
@@ -30,6 +31,7 @@ struct DiagnosticsExport {
             + (encoderCodecs.isEmpty ? "none" : encoderCodecs.joined(separator: ", ")))
         lines.append("AVCaptureVideoDataOutput pixel formats: "
             + (videoPixelFormatTypes.isEmpty ? "none" : videoPixelFormatTypes.joined(separator: ", ")))
+        lines.append("RAW still photo formats (AVCapturePhotoOutput): " + rawPhotoFormats)
         lines.append("")
 
         for camera in cameras {
@@ -58,6 +60,7 @@ struct DiagnosticsExport {
     static func current() -> DiagnosticsExport {
         let capabilities = DeviceCapabilities.current()
         let encoder = EncoderCapabilities.current()
+        let raw = RawCapabilityProbe.current()
         let pixelFormats = AVCaptureVideoDataOutput().availableVideoPixelFormatTypes
             .map(CameraFormatInfo.fourCCString)
 
@@ -70,6 +73,7 @@ struct DiagnosticsExport {
             cameras: capabilities.cameras,
             encoderCodecs: encoder.movieFileCodecs.map(\.rawValue),
             videoPixelFormatTypes: pixelFormats,
+            rawPhotoFormats: raw.reportLine,
             thermalState: ProcessInfo.processInfo.thermalState.displayName,
             featureFlags: [
                 "ProRes encoder advertised": encoder.supportsProRes,
@@ -81,6 +85,10 @@ struct DiagnosticsExport {
                 "Any Open Gate (square sensor) format": capabilities.hasOpenGateCapableFormat,
                 "Any dynamic aspect ratio format": capabilities.allFormats.contains { $0.supportsDynamicAspectRatios },
                 "Any HDR-capable format": capabilities.allFormats.contains { $0.isVideoHDRSupported },
+                "Bayer RAW still capture": raw.supportsRawStillCapture,
+                "Apple ProRAW still capture": raw.isAppleProRAWSupported
+                    && !raw.appleProRAWPixelFormatCodes.isEmpty,
+                "Bayer video frames (public API)": false,
             ]
         )
     }

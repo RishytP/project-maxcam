@@ -61,10 +61,16 @@ engine queue.
 - Apple Log / Apple Log 2 capture when the device's format advertises them.
 - Manual exposure (ISO, shutter, bias), focus (tap/lock), and white balance
   (temperature/tint presets to gains).
-- Open Gate: on iOS 26+, `AVCaptureDevice.setDynamicAspectRatio` applied over
-  square full-sensor formats; older OS falls back to square-format detection.
+- Open Gate: square full-sensor formats are detected and reported as true
+  sensor-format Open Gate. The dynamic-aspect-ratio capability of each format
+  is enumerated. Applying `AVCaptureDevice.setDynamicAspectRatio(_:)` to drive
+  it live is not wired up yet, so no mode is presented as Open Gate that the
+  format's own geometry does not already provide.
 - Thermal state surfacing and dropped-frame accounting.
-- Pro Video Storage (iOS 27+) gated on `isProVideoStorageSupported`.
+- RAW still-capture probe: enumerates `AVCapturePhotoOutput.availableRawPhotoPixelFormatTypes`
+  and separates Bayer RAW from Apple ProRAW. Reported, never faked. There is no
+  public API that delivers Bayer frames to a video output, so no RAW video path
+  is claimed.
 - Unit-testable capability gate and configuration summary tests.
 
 ## Building
@@ -84,10 +90,31 @@ an iPhone. The `MaxCamTests` scheme runs the capability-gate tests.
 |---|---|---|
 | Apple Log | `AVCaptureColorSpace.appleLog` | iOS 17+ (iPhone 15 Pro line) |
 | Apple Log 2 | `AVCaptureColorSpace.appleLog2` | iOS 26+ (iPhone 17 line) |
-| Dynamic aspect ratio | `AVCaptureDevice.setDynamicAspectRatio` / `supportedDynamicAspectRatios` | iOS 26+ |
-| Pro Video Storage | `AVAssetWriter.usesProVideoStorage` | iOS 27+ |
-| ProRes RAW | `AVVideoCodecType.proResRAW` | gained via `availableVideoCodecTypes` (iPhone 17 Pro line); verified at runtime only |
+| Dynamic aspect ratio | `AVCaptureDevice.Format.supportedDynamicAspectRatios` | iOS 26+ |
+| Pro Video Storage | `AVAssetWriter.usesProVideoStorage` / `isProVideoStorageSupported` | iOS 26+ |
+| ProRes RAW | `AVVideoCodecType.proResRAW` | advertised through `availableVideoCodecTypes`; verified at runtime only |
 | ProRes (422 family) | `availableVideoCodecTypes` | iPhone 13 Pro+ |
+
+Pro Video Storage and ProRes RAW are researched here but not implemented in
+this build: Pro Video Storage has no code path, and ProRes RAW is only ever
+reported, never selected. ProRes 422 configurations are derived from what
+`AVCaptureMovieFileOutput.availableVideoCodecTypes` advertises and are written
+through `AVAssetWriter` with the advertised codec identifier.
+
+## Known limitations
+
+These are honest gaps in the current build, not device limits:
+
+- ProRes and ProRes RAW have not been validated on a physical device. The
+  engine writes whatever codec identifier a configuration carries, so the
+  ProRes path is untested rather than known-good or known-bad.
+- `AVCaptureDevice.setDynamicAspectRatio(_:)` is not called. Open Gate is
+  reported from the format's own geometry only.
+- Audio is not recorded; the engine has a video track only.
+- `MetalProcessor` is not yet driven by the preview path. Preview uses
+  AVFoundation's native tone mapping.
+- Cinema scopes (histogram, waveform, zebras, false colour, focus peaking) and
+  the custom-log monitoring path are not implemented.
 
 ## Device-specific behavior
 

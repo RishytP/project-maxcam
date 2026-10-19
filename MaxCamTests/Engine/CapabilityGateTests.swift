@@ -163,6 +163,97 @@ final class CapabilityGateTests: XCTestCase {
         XCTAssertEqual(ProcessInfo.ThermalState.critical.displayName, "critical")
     }
 
+    // MARK: - RAW still capture gating
+
+    func testRawProbeWithNoBayerFormatsReportsNoRaw() {
+        let probe = RawCapabilityProbe(
+            isAppleProRAWSupported: false,
+            rawPixelFormatCodes: [],
+            bayerPixelFormatCodes: [],
+            appleProRAWPixelFormatCodes: []
+        )
+        XCTAssertFalse(probe.hasAnyRaw)
+        XCTAssertFalse(probe.supportsRawStillCapture)
+        XCTAssertTrue(probe.reportLine.contains("none advertised"))
+    }
+
+    func testRawProbeDistinguishesBayerFromProRAW() {
+        // Apple ProRAW is a processed container, not a Bayer mosaic. A probe
+        // that advertises only ProRAW must not claim RAW still capture.
+        let proRawOnly = RawCapabilityProbe(
+            isAppleProRAWSupported: true,
+            rawPixelFormatCodes: [0x70726F52],
+            bayerPixelFormatCodes: [],
+            appleProRAWPixelFormatCodes: [0x70726F52]
+        )
+        XCTAssertTrue(proRawOnly.hasAnyRaw)
+        XCTAssertFalse(proRawOnly.supportsRawStillCapture)
+
+        let bayer = RawCapabilityProbe(
+            isAppleProRAWSupported: false,
+            rawPixelFormatCodes: [0x72776120],
+            bayerPixelFormatCodes: [0x72776120],
+            appleProRAWPixelFormatCodes: []
+        )
+        XCTAssertTrue(bayer.supportsRawStillCapture)
+    }
+
+    func testRawProbeReportLineNamesFormatsWhenPresent() {
+        let probe = RawCapabilityProbe(
+            isAppleProRAWSupported: true,
+            rawPixelFormatCodes: [0x72776120],
+            bayerPixelFormatCodes: [0x72776120],
+            appleProRAWPixelFormatCodes: []
+        )
+        XCTAssertTrue(probe.reportLine.contains("rwa "))
+        XCTAssertTrue(probe.reportLine.contains("Apple ProRAW supported: YES"))
+    }
+
+    // MARK: - Capability gate
+
+    func testGateReportsUnavailableRawWithReason() {
+        let gate = CapabilityGate(
+            capabilities: DeviceCapabilities.current(),
+            encoder: EncoderCapabilities(movieFileCodecs: []),
+            raw: RawCapabilityProbe(
+                isAppleProRAWSupported: false,
+                rawPixelFormatCodes: [],
+                bayerPixelFormatCodes: [],
+                appleProRAWPixelFormatCodes: []
+            )
+        )
+        let verdict = gate.verdict(for: .rawStill)
+        XCTAssertFalse(verdict.isAvailable)
+        XCTAssertFalse(verdict.reason.isEmpty)
+    }
+
+    func testGateReportsAvailableBayerRaw() {
+        let gate = CapabilityGate(
+            capabilities: DeviceCapabilities.current(),
+            encoder: EncoderCapabilities(movieFileCodecs: []),
+            raw: RawCapabilityProbe(
+                isAppleProRAWSupported: false,
+                rawPixelFormatCodes: [0x72776120],
+                bayerPixelFormatCodes: [0x72776120],
+                appleProRAWPixelFormatCodes: []
+            )
+        )
+        XCTAssertTrue(gate.verdict(for: .rawStill).isAvailable)
+        XCTAssertFalse(gate.verdict(for: .proRAWStill).isAvailable)
+    }
+
+    func testEveryGateFeatureHasAVerdict() {
+        let gate = CapabilityGate(
+            capabilities: DeviceCapabilities.current(),
+            encoder: EncoderCapabilities(movieFileCodecs: []),
+            raw: RawCapabilityProbe.current()
+        )
+        XCTAssertEqual(gate.allVerdicts.count, CapabilityGate.Feature.allCases.count)
+        for verdict in gate.allVerdicts {
+            XCTAssertFalse(verdict.reason.isEmpty, "missing reason for \(verdict.feature)")
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeConfiguration(

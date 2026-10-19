@@ -14,10 +14,23 @@ struct CapabilityGate: @unchecked Sendable {
         case hdr = "HDR (HLG)"
         case dynamicAspectRatio = "Dynamic aspect ratio"
         case wideColor = "Wide color (P3-D65)"
+        case rawStill = "RAW still capture (Bayer)"
+        case proRAWStill = "Apple ProRAW still capture"
     }
 
     let capabilities: DeviceCapabilities
     let encoder: EncoderCapabilities
+    let raw: RawCapabilityProbe
+
+    init(
+        capabilities: DeviceCapabilities,
+        encoder: EncoderCapabilities,
+        raw: RawCapabilityProbe
+    ) {
+        self.capabilities = capabilities
+        self.encoder = encoder
+        self.raw = raw
+    }
 
     struct Verdict: Sendable {
         let feature: Feature
@@ -74,6 +87,20 @@ struct CapabilityGate: @unchecked Sendable {
                 feature,
                 available: capabilities.allFormats.contains { $0.isWideColor },
                 unavailable: "No discovered format lists P3-D65 in supportedColorSpaces."
+            )
+        case .rawStill:
+            return verdict(
+                feature,
+                available: raw.supportsRawStillCapture,
+                unavailable: "AVCapturePhotoOutput advertises no Bayer RAW pixel format. "
+                    + "No public API delivers Bayer video frames either, so RAW is not offered."
+            )
+        case .proRAWStill:
+            return verdict(
+                feature,
+                available: raw.isAppleProRAWSupported && !raw.appleProRAWPixelFormatCodes.isEmpty,
+                unavailable: "AVCapturePhotoOutput does not advertise an Apple ProRAW pixel format "
+                    + "(isAppleProRAWSupported is false or the format list is empty)."
             )
         }
     }

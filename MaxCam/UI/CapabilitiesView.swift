@@ -7,6 +7,7 @@ import UIKit
 struct CapabilitiesView: View {
     let capabilities: DeviceCapabilities
     let encoder: EncoderCapabilities
+    let raw: RawCapabilityProbe
 
     @Environment(\.dismiss) private var dismiss
     @State private var exportText: String?
@@ -77,11 +78,16 @@ struct CapabilitiesView: View {
                     .font(.caption2.monospaced())
                     .multilineTextAlignment(.trailing)
             }
+            LabeledContent("RAW photo formats") {
+                Text(raw.reportLine)
+                    .font(.caption2.monospaced())
+                    .multilineTextAlignment(.trailing)
+            }
         }
     }
 
     private var gates: [CapabilityGate.Verdict] {
-        CapabilityGate(capabilities: capabilities, encoder: encoder).allVerdicts
+        CapabilityGate(capabilities: capabilities, encoder: encoder, raw: raw).allVerdicts
     }
 
     private func cameraSection(_ camera: CameraDeviceInfo) -> some View {

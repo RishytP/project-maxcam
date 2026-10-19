@@ -19,6 +19,7 @@
 		AB12C12345CD000000000214 /* CapabilityMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityMatrix.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000215 /* CameraEngineError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraEngineError.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000216 /* EncoderCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncoderCapabilities.swift; sourceTree = "<group>"; };
+		AB12C12345CD00000000021A /* RawCapabilityProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RawCapabilityProbe.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000217 /* CapabilityGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityGate.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000218 /* MetalProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalProcessor.swift; sourceTree = "<group>"; };
 		AB12C12345CD000000000221 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
@@ -43,6 +44,7 @@
 		AB12C12345CD000000000313 /* DeviceCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000213 /* DeviceCapabilities.swift */; };
 		AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000215 /* CameraEngineError.swift */; };
 		AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000216 /* EncoderCapabilities.swift */; };
+		AB12C12345CD00000000031A /* RawCapabilityProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD00000000021A /* RawCapabilityProbe.swift */; };
 		AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000217 /* CapabilityGate.swift */; };
 		AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000218 /* MetalProcessor.swift */; };
 		AB12C12345CD000000000321 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12C12345CD000000000221 /* CameraPreview.swift */; };
@@ -109,6 +111,7 @@
 				AB12C12345CD000000000214 /* CapabilityMatrix.swift */,
 				AB12C12345CD000000000215 /* CameraEngineError.swift */,
 				AB12C12345CD000000000216 /* EncoderCapabilities.swift */,
+				AB12C12345CD00000000021A /* RawCapabilityProbe.swift */,
 				AB12C12345CD000000000217 /* CapabilityGate.swift */,
 				AB12C12345CD000000000218 /* MetalProcessor.swift */,
 				AB12C12345CD000000000260 /* MaxCamShaders.metal */,
@@ -259,6 +262,7 @@
 				AB12C12345CD000000000262 /* CapabilityMatrix.swift in Sources */,
 				AB12C12345CD000000000315 /* CameraEngineError.swift in Sources */,
 				AB12C12345CD000000000316 /* EncoderCapabilities.swift in Sources */,
+				AB12C12345CD00000000031A /* RawCapabilityProbe.swift in Sources */,
 				AB12C12345CD000000000317 /* CapabilityGate.swift in Sources */,
 				AB12C12345CD000000000318 /* MetalProcessor.swift in Sources */,
 				AB12C12345CD000000000264 /* DiagnosticsExport.swift in Sources */,
